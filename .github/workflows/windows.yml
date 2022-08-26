@@ -1,0 +1,161 @@
+name: windows build matrix - cmake
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release Tag'
+        required: true
+      publish:
+        description: 'Publish: If want ignore'
+        required: false
+jobs:
+  build-go:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v2
+      - name: Install Golang
+        uses: actions/setup-go@v2
+        with:
+          stable: false
+          go-version: 1.18.5
+      - name: Build golang and common parts
+        shell: bash
+        run: |
+          ./libs/get_source.sh
+          GOOS=windows GOARCH=amd64 ./libs/build_go.sh
+          ./libs/build_asset.sh
+      - name: Tar files
+        run: tar czvf artifacts.tgz ./deployment
+      - name: Uploading Artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: NekoRay-${{ github.sha }}-Common
+          path: artifacts.tgz
+  build-cpp:
+    strategy:
+      matrix:
+        platform: [ windows-2022 ]
+        arch: [ x64 ]
+        qt_version: [ 5.15.2 ]
+        include:
+          - platform: windows-2022
+            arch: x64
+            qtarch: win64_msvc2019_64
+      fail-fast: false
+
+    runs-on: ${{ matrix.platform }}
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - name: Install MSVC compiler
+        if: matrix.platform == 'windows-2022'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          # 14.1 is for vs2017, 14.2 is vs2019, following the upstream vcpkg build from Qv2ray-deps repo
+          toolset: 14.2
+          arch: ${{ matrix.arch }}
+      - name: Cache Qt
+        id: cache-qt
+        uses: actions/cache@v3
+        with:
+          path: ${{ runner.workspace }}/Qt
+          key: QtCache-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.qt_version }}
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v2.14.0
+        with:
+          version: ${{ matrix.qt_version }}
+          py7zrversion: ' '
+          aqtversion: ' '
+          setup-python: false
+          cached: ${{ steps.cache-qt.outputs.cache-hit }}
+      # ========================================================================================================= Other install
+      - name: Windows - ${{ matrix.arch }} - ${{ matrix.qt_version }} - Setup Ninja
+        if: matrix.platform == 'windows-2022'
+        uses: ashutoshvarma/setup-ninja@master
+        with:
+          # ninja version to download. Default: 1.10.0
+          version: 1.10.0
+      # ========================================================================================================= 编译与 Qt 无关的依赖
+      - name: Cache Download
+        id: cache-deps
+        uses: actions/cache@v2
+        with:
+          path: libs/deps
+          key: ${{ hashFiles('libs/build*.sh') }}
+      - name: Build Dependencies
+        shell: bash
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          ./libs/build_deps_all.sh
+      # ========================================================================================================= Generate MakeFile and Build
+      - name: Windows - ${{ matrix.qt_version }} - Generate MakeFile and Build
+        shell: bash
+        if: matrix.platform == 'windows-2022'
+        env:
+          CC: cl.exe
+          CXX: cl.exe
+        run: |
+          mkdir build
+          cd build
+          cmake -GNinja -DCMAKE_BUILD_TYPE=Release ..
+          cmake --build . --parallel $(nproc)
+          cd ..
+          ./libs/deploy_windows64.sh
+      # ========================================================================================================= Deployments
+      - name: Tar files
+        shell: bash
+        run: tar czvf artifacts.tgz ./deployment
+      - name: Uploading Artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: NekoRay-${{ github.sha }}-${{ matrix.platform }}-${{ matrix.arch }}
+          path: artifacts.tgz
+  publish:
+    name: Publish Release
+    if: github.event.inputs.publish != 'y'
+    runs-on: ubuntu-latest
+    needs:
+      - build-cpp
+      - build-go
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v2
+      - name: Donwload Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: NekoRay-${{ github.sha }}-Common
+          path: artifacts-common
+      - name: Donwload Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: NekoRay-${{ github.sha }}-ubuntu-20.04-x64
+          path: artifacts-linux
+      - name: Donwload Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: NekoRay-${{ github.sha }}-windows-2022-x64
+          path: artifacts-windows
+      - name: Release
+        run: |
+          source libs/deploy_common.sh
+          curl -Lo - https://github.com/tcnksm/ghr/releases/download/v0.13.0/ghr_v0.13.0_linux_amd64.tar.gz | tar xzv
+          mv ghr*linux_amd64/ghr .
+          tar xzvf artifacts-windows/artifacts.tgz
+          tar xzvf artifacts-common/artifacts.tgz
+          cd deployment
+          cp -r assets/* windows64
+          rm -rf assets *.pdb
+          mv linux64 nekoray
+          rm -rf nekoray
+          mv windows64 nekoray
+          zip -r $version_standalone-windows64.zip nekoray
+          rm -rf nekoray
+          cd ..
+          ./ghr -delete -t "${{ github.token }}" -n "${{ github.event.inputs.tag }}" "${{ github.event.inputs.tag }}" deployment
