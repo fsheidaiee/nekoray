@@ -31,18 +31,35 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
     // network changed
     network_title_base = ui->network_box->title();
     connect(ui->network, &QComboBox::currentTextChanged, this, [=](const QString &txt) {
+        ui->network_box->setTitle(network_title_base.arg(txt));
         if (txt == "tcp" || txt == "quic") {
-            ui->network_box->setVisible(false);
+            ui->header_type->setVisible(true);
+            ui->header_type_l->setVisible(true);
+            ui->path->setVisible(true);
+            ui->path_l->setVisible(true);
+            ui->host->setVisible(true);
+            ui->host_l->setVisible(true);
+        } else if (txt == "grpc") {
+            ui->header_type->setVisible(false);
+            ui->header_type_l->setVisible(false);
+            ui->path->setVisible(true);
+            ui->path_l->setVisible(true);
+            ui->host->setVisible(false);
+            ui->host_l->setVisible(false);
+        } else if (txt == "ws" || txt == "h2") {
+            ui->header_type->setVisible(false);
+            ui->header_type_l->setVisible(false);
+            ui->path->setVisible(true);
+            ui->path_l->setVisible(true);
+            ui->host->setVisible(true);
+            ui->host_l->setVisible(true);
         } else {
-            ui->network_box->setVisible(true);
-            ui->network_box->setTitle(network_title_base.arg(txt));
-            if (txt == "grpc") {
-                ui->host->setVisible(false);
-                ui->host_l->setVisible(false);
-            } else {
-                ui->host->setVisible(true);
-                ui->host_l->setVisible(true);
-            }
+            ui->header_type->setVisible(false);
+            ui->header_type_l->setVisible(false);
+            ui->path->setVisible(false);
+            ui->path_l->setVisible(false);
+            ui->host->setVisible(false);
+            ui->host_l->setVisible(false);
         }
         ADJUST_SIZE
     });
@@ -128,7 +145,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         auto _innerWidget = new EditCustom(this);
         innerWidget = _innerWidget;
         innerEditor = _innerWidget;
-        if (type == "hysteria" || ent->CustomBean()->core == "hysteria") {
+        if (type == "hysteria" || (!newEnt && ent->CustomBean()->core == "hysteria")) {
             _innerWidget->preset_core = type;
             _innerWidget->preset_command = Preset::Hysteria::command;
             _innerWidget->preset_config = Preset::Hysteria::config;
@@ -167,6 +184,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->sni->setText(stream->sni);
         ui->alpn->setText(stream->alpn);
         ui->insecure->setChecked(stream->allow_insecure);
+        ui->header_type->setCurrentText(stream->header_type);
         CACHE.certificate = stream->certificate;
     } else {
         ui->right_all_w->setVisible(false);
@@ -241,6 +259,7 @@ void DialogEditProfile::accept() {
         stream->sni = ui->sni->text();
         stream->alpn = ui->alpn->text();
         stream->allow_insecure = ui->insecure->isChecked();
+        stream->header_type = ui->header_type->currentText();
         stream->certificate = CACHE.certificate;
     }
     auto custom_item = ent->bean->_get("custom");

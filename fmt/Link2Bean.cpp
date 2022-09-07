@@ -113,11 +113,11 @@ namespace NekoRay::fmt {
             serverPort = objN["port"].toVariant().toInt();
             // OPTIONAL
             name = objN["ps"].toString();
-            auto aid_ = objN["aid"];
-            aid = aid_.isString() ? aid_.toString().toInt() : aid_.toInt();
+            aid = objN["aid"].toVariant().toInt();
             stream->host = objN["host"].toString();
             stream->path = objN["path"].toString();
             stream->sni = objN["sni"].toString();
+            stream->header_type = objN["type"].toString();
             auto net = objN["net"].toString().replace("http", "h2");
             if (!net.isEmpty()) stream->network = net;
             auto scy = objN["scy"].toString();
@@ -135,6 +135,9 @@ namespace NekoRay::fmt {
     bool NaiveBean::TryParseLink(const QString &link) {
         auto url = QUrl(link);
         if (!url.isValid()) return false;
+
+        protocol = url.scheme().replace("naive+", "");
+        if (protocol != "https" && protocol != "quic") return false;
 
         name = url.fragment(QUrl::FullyDecoded);
         serverAddress = url.host();

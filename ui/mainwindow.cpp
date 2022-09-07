@@ -1,6 +1,7 @@
 #include "./ui_mainwindow.h"
 #include "mainwindow.h"
 
+#include "fmt/Preset.hpp"
 #include "db/ProfileFilter.hpp"
 #include "db/ConfigBuilder.hpp"
 #include "sub/GroupUpdater.hpp"
@@ -262,7 +263,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->menu_program, &QMenu::aboutToShow, this, [=]() {
         ui->actionRemember_last_proxy->setChecked(NekoRay::dataStore->remember_enable);
         ui->actionStart_with_system->setChecked(GetProcessAutoRunSelf());
-        ui->actionStart_minimal->setChecked(NekoRay::dataStore->start_minimal);
+        ui->actionAllow_LAN->setChecked(NekoRay::dataStore->inbound_address == "0.0.0.0");
         // active server
         for (const auto &old: ui->menuActive_Server->actions()) {
             ui->menuActive_Server->removeAction(old);
@@ -304,7 +305,7 @@ MainWindow::MainWindow(QWidget *parent)
             r.load_control_force = true;
             r.fn = "routes/" + fn;
             if (r.Load()) {
-                auto btn = QMessageBox::question(nullptr, "NekoRay",
+                auto btn = QMessageBox::question(GetMessageBoxParent(), "NekoRay",
                                                  tr("Load routing and apply: %1").arg(fn) + "\n" + r.toString());
                 if (btn == QMessageBox::Yes) {
                     NekoRay::Routing::SetToActive(fn);
@@ -324,9 +325,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->actionStart_with_system, &QAction::triggered, this, [=](bool checked) {
         SetProcessAutoRunSelf(checked);
     });
-    connect(ui->actionStart_minimal, &QAction::triggered, this, [=](bool checked) {
-        NekoRay::dataStore->start_minimal = checked;
-        NekoRay::dataStore->Save();
+    connect(ui->actionAllow_LAN, &QAction::triggered, this, [=](bool checked) {
+        NekoRay::dataStore->inbound_address = checked ? "0.0.0.0" : "127.0.0.1";
+        dialog_message("", "UpdateDataStore");
     });
     //
     connect(ui->checkBox_VPN, &QCheckBox::clicked, this, [=](bool checked) {
@@ -489,8 +490,8 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
         if (info.contains("VPNChanged") && title_spmode == NekoRay::SystemProxyMode::VPN) {
             MessageBoxWarning(tr("VPN settings changed"), tr("Restart VPN to take effect."));
         } else if (changed && NekoRay::dataStore->started_id >= 0 &&
-                   QMessageBox::question(this, tr("Confirmation"), tr("Settings changed, restart proxy?")
-                   ) == QMessageBox::StandardButton::Yes) {
+                   QMessageBox::question(GetMessageBoxParent(), tr("Confirmation"),
+                                         tr("Settings changed, restart proxy?")) == QMessageBox::StandardButton::Yes) {
             neko_start(NekoRay::dataStore->started_id);
         }
         refresh_status();
@@ -507,8 +508,7 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
         // 订阅完毕
         refresh_proxy_list();
         if (!info.contains("dingyue")) {
-            QMessageBox::information(this, "NekoRay",
-                                     tr("Imported %1 profile(s)").arg(NekoRay::dataStore->imported_count));
+            MessageBoxInfo("NekoRay", tr("Imported %1 profile(s)").arg(NekoRay::dataStore->imported_count));
         }
     } else if (sender == "ExternalProcess") {
         if (info == "Crashed") {
@@ -880,14 +880,20 @@ void MainWindow::on_proxyListTable_itemDoubleClicked(QTableWidgetItem *item) {
     connect(dialog, &QDialog::finished, dialog, &QDialog::deleteLater);
 }
 
+#define NO_ADD_TO_SUBSCRIPTION_GROUP \
+if (!NekoRay::profileManager->CurrentGroup()->url.isEmpty()) { \
+MessageBoxWarning("NekoRay", MainWindow::tr("Manual addition of profiles is not allowed in subscription groupings.")); \
+return; \
+}
+
 void MainWindow::on_menu_add_from_input_triggered() {
-    if (!NekoRay::profileManager->CurrentGroup()->url.isEmpty()) return;
+    NO_ADD_TO_SUBSCRIPTION_GROUP
     auto dialog = new DialogEditProfile("socks", NekoRay::dataStore->current_group, this);
     connect(dialog, &QDialog::finished, dialog, &QDialog::deleteLater);
 }
 
 void MainWindow::on_menu_add_from_clipboard_triggered() {
-    if (!NekoRay::profileManager->CurrentGroup()->url.isEmpty()) return;
+    NO_ADD_TO_SUBSCRIPTION_GROUP
     auto clipboard = QApplication::clipboard()->text();
     NekoRay::sub::groupUpdater->AsyncUpdate(clipboard);
 }
@@ -896,9 +902,7 @@ void MainWindow::on_menu_clone_triggered() {
     auto ents = get_now_selected();
     if (ents.isEmpty()) return;
 
-    auto btn = QMessageBox::question(nullptr,
-                                     tr("Clone"),
-                                     tr("Clone %1 item(s)").arg(ents.count()));
+    auto btn = QMessageBox::question(this, tr("Clone"), tr("Clone %1 item(s)").arg(ents.count()));
     if (btn != QMessageBox::Yes) return;
 
     QStringList sls;
@@ -961,7 +965,7 @@ void MainWindow::on_menu_reset_traffic_triggered() {
 void MainWindow::on_menu_profile_debug_info_triggered() {
     auto ents = get_now_selected();
     if (ents.count() != 1) return;
-    auto btn = QMessageBox::information(nullptr, "NekoRay", ents.first()->ToJsonBytes(), "OK", "Edit", "Reload", 0, 0);
+    auto btn = QMessageBox::information(this, "NekoRay", ents.first()->ToJsonBytes(), "OK", "Edit", "Reload", 0, 0);
     if (btn == 1) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(
                 QFileInfo(QString("profiles/%1.json").arg(ents.first()->id)).absoluteFilePath()
@@ -1068,7 +1072,7 @@ void MainWindow::display_qr_link(bool nkrFormat) {
 }
 
 void MainWindow::on_menu_scan_qr_triggered() {
-    if (!NekoRay::profileManager->CurrentGroup()->url.isEmpty()) return;
+    NO_ADD_TO_SUBSCRIPTION_GROUP
 #ifndef NKR_NO_EXTERNAL
     using namespace ZXingQt;
 
@@ -1398,6 +1402,7 @@ bool MainWindow::StartVPNProcess() {
     auto config = ReadFileText(configFn)
             .replace("%IPV6_ADDRESS%", NekoRay::dataStore->vpn_ipv6 ? "\"inet6_address\": \"fdfe:dcba:9876::1/128\"," : "")
             .replace("%MTU%", Int2String(NekoRay::dataStore->vpn_mtu))
+            .replace("%STACK%", Preset::SingBox::VpnImplementation[NekoRay::dataStore->vpn_implementation])
             .replace("%PORT%", Int2String(NekoRay::dataStore->inbound_socks_port));
 #else
     auto protectPath = QDir::currentPath() + "/protect";

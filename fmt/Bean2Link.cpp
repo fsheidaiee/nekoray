@@ -62,18 +62,17 @@ namespace NekoRay::fmt {
 
     QString VMessBean::ToShareLink() {
         QJsonObject N{
-                {"v",    2},
+                {"v",    "2"},
                 {"ps",   name},
                 {"add",  serverAddress},
-                {"port", serverPort},
+                {"port", Int2String(serverPort)},
                 {"id",   uuid},
-                {"aid",  aid},
+                {"aid",  Int2String(aid)},
                 {"net",  stream->network},
                 {"host", stream->host},
                 {"path", stream->path},
                 {"type", stream->header_type},
                 {"scy",  security},
-                // TODO header type
                 {"tls",  stream->security == "tls" ? "tls" : ""},
                 {"sni",  stream->sni},
         };
@@ -82,7 +81,7 @@ namespace NekoRay::fmt {
 
     QString NaiveBean::ToShareLink() {
         QUrl url;
-        url.setScheme("https+naive");
+        url.setScheme("naive+" + protocol);
         url.setUserName(username);
         url.setPassword(password);
         url.setHost(serverAddress);
