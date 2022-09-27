@@ -3,7 +3,6 @@
 #include "main/NekoRay.hpp"
 
 namespace NekoRay::fmt {
-
     struct CoreObjOutboundBuildResult {
     public:
         QJsonObject outbound;
@@ -16,6 +15,7 @@ namespace NekoRay::fmt {
         QStringList env;
         QStringList arguments;
         QString error;
+        QString config_export;
     };
 
     class AbstractBean : public JsonStore {
@@ -27,19 +27,31 @@ namespace NekoRay::fmt {
 
         explicit AbstractBean(int version);
 
+        //
+
         QString ToNekorayShareLink(const QString &type);
+
+        void ResolveDomainToIP(const std::function<void()> &onFinished);
+
+        //
 
         [[nodiscard]] virtual QString DisplayAddress();
 
         [[nodiscard]] virtual QString DisplayName();
 
+        virtual QString DisplayCoreType() { return software_core_name; };
+
         virtual QString DisplayType() { return {}; };
 
         virtual QString DisplayTypeAndName();
 
+        //
+
         virtual bool NeedExternal() { return false; };
 
-        virtual CoreObjOutboundBuildResult BuildCoreObj() { return {}; };
+        virtual CoreObjOutboundBuildResult BuildCoreObjV2Ray() { return {}; };
+
+        virtual CoreObjOutboundBuildResult BuildCoreObjSingBox() { return {}; };
 
         virtual ExternalBuildResult BuildExternal(int mapping_port, int socks_port) { return {}; };
 
@@ -50,5 +62,4 @@ namespace NekoRay::fmt {
     };
 
     QString DisplayInsecureHint(const QSharedPointer<AbstractBean> &);
-
 }

@@ -2,6 +2,8 @@
 
 #include <QFile>
 #include <QDir>
+#include <QApplication>
+#include <QFileInfo>
 
 namespace NekoRay {
 
@@ -12,7 +14,6 @@ namespace NekoRay {
     DataStore::DataStore() : JsonStore("groups/nekoray.json") {
         _add(new configItem("extraCore", dynamic_cast<JsonStore *>(extraCore), itemType::jsonStore));
 
-        _add(new configItem("core_path", &core_path, itemType::string));
         _add(new configItem("user_agent", &user_agent, itemType::string));
         _add(new configItem("test_url", &test_url, itemType::string));
         _add(new configItem("current_group", &current_group, itemType::integer));
@@ -53,7 +54,11 @@ namespace NekoRay {
         _add(new configItem("vpn_impl", &vpn_implementation, itemType::integer));
         _add(new configItem("vpn_mtu", &vpn_mtu, itemType::integer));
         _add(new configItem("vpn_ipv6", &vpn_ipv6, itemType::boolean));
+        _add(new configItem("vpn_hide_console", &vpn_hide_consloe, itemType::boolean));
+        _add(new configItem("vpn_bypass_process", &vpn_bypass_process, itemType::string));
+        _add(new configItem("vpn_bypass_cidr", &vpn_bypass_cidr, itemType::string));
         _add(new configItem("check_include_pre", &check_include_pre, itemType::boolean));
+        _add(new configItem("neko_core", &neko_core, itemType::integer));
     }
 
     void DataStore::UpdateStartedId(int id) {
@@ -319,6 +324,24 @@ namespace NekoRay {
 
         file.close();
         return ok;
+    }
+
+    //
+
+    QString FindCoreAsset(const QString &name) {
+        QStringList search{dataStore->v2ray_asset_dir};
+        search << QApplication::applicationDirPath();
+        search << "/usr/share/v2ray";
+        search << "/usr/local/share/v2ray";
+        search << "/opt/v2ray";
+        for (const auto &dir: search) {
+            if (dir.isEmpty()) continue;
+            QFileInfo asset(dir + "/" + name);
+            if (asset.exists()) {
+                return asset.absoluteFilePath();
+            }
+        }
+        return {};
     }
 
 }

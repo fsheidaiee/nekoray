@@ -76,8 +76,8 @@
         <translation>资源文件路径</translation>
     </message>
     <message>
-        <source>Default: dir of &quot;nekoray-core&quot;</source>
-        <translation>默认值：和 nekoray_core 同路径</translation>
+        <source>Default: dir of &quot;nekoray&quot;</source>
+        <translation>默认值：和 nekoray 同路径</translation>
     </message>
     <message>
         <source>Settings changed</source>
@@ -158,6 +158,38 @@
     <message>
         <source>Include Pre-release when checking update</source>
         <translation>检查更新时包括 Pre-release</translation>
+    </message>
+    <message>
+        <source>Set custom icon</source>
+        <translation>自定义图标</translation>
+    </message>
+    <message>
+        <source>Please select a PNG file.</source>
+        <translation>请选择一个 PNG 文件。</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>重置</translation>
+    </message>
+    <message>
+        <source>Please select a valid square image.</source>
+        <translation>请选择有效的正方形图像。</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Switch core</source>
+        <translation>切换核心</translation>
+    </message>
+    <message>
+        <source>Confirmation</source>
+        <translation>确认</translation>
+    </message>
+    <message>
+        <source>Switching the core to %1, click &quot;Yes&quot; to complete the switch and the program will restart. This feature may be unstable, please do not switch frequently.</source>
+        <translation>将核心切换到 %1，点击 &quot;是 &quot;完成切换，程序将重新启动。此功能可能不稳定，请不要频繁切换。</translation>
     </message>
 </context>
 <context>
@@ -454,13 +486,32 @@
         <source>Custom (global)</source>
         <translation>自定义 (全局)</translation>
     </message>
+</context>
+<context>
+    <name>DialogVPNSettings</name>
+    <message>
+        <source>VPN Settings</source>
+        <translation>VPN 设置</translation>
+    </message>
     <message>
         <source>VPN Implementation</source>
         <translation>VPN 实现</translation>
     </message>
     <message>
+        <source>Hide Console</source>
+        <translation>隐藏控制台</translation>
+    </message>
+    <message>
         <source>VPN Enable IPv6</source>
         <translation>启用 VPN IPv6</translation>
+    </message>
+    <message>
+        <source>Bypass CIDR</source>
+        <translation>绕过 CIDR</translation>
+    </message>
+    <message>
+        <source>Bypass Process Name</source>
+        <translation>绕过进程名</translation>
     </message>
 </context>
 <context>
@@ -489,16 +540,16 @@
         <translation>核心</translation>
     </message>
     <message>
-        <source>Json</source>
-        <translation></translation>
-    </message>
-    <message>
         <source>Command</source>
         <translation>命令</translation>
     </message>
     <message>
         <source>Generator</source>
         <translation>生成器</translation>
+    </message>
+    <message>
+        <source>Json Editor</source>
+        <translation>JSON 编辑器</translation>
     </message>
 </context>
 <context>
@@ -784,10 +835,6 @@
         <translation>停止</translation>
     </message>
     <message>
-        <source>Routing VPN Settings</source>
-        <translation>路由 VPN 设置</translation>
-    </message>
-    <message>
         <source>Add profile from clipboard</source>
         <translation>从剪切板添加</translation>
     </message>
@@ -994,10 +1041,6 @@ End: %2</source>
         <translation>显示 QR Code 和分享链接</translation>
     </message>
     <message>
-        <source>Export V2ray config</source>
-        <translation>导出 V2ray 配置</translation>
-    </message>
-    <message>
         <source>Active Routing</source>
         <translation>当前路由规则</translation>
     </message>
@@ -1092,6 +1135,26 @@ End: %2</source>
     <message>
         <source>Manual addition of profiles is not allowed in subscription groupings.</source>
         <translation>订阅分组中不允许手动添加配置。</translation>
+    </message>
+    <message>
+        <source>Resolve domain</source>
+        <translation>将服务器域名解析为 IP</translation>
+    </message>
+    <message>
+        <source>Resolving current group domain to IP, if support.</source>
+        <translation>将当前分组内服务器域名解析为 IP（如果支持）。</translation>
+    </message>
+    <message>
+        <source>Export %1 config</source>
+        <translation>导出 %1 配置</translation>
+    </message>
+    <message>
+        <source>Routing Settings</source>
+        <translation>路由设置</translation>
+    </message>
+    <message>
+        <source>VPN Settings</source>
+        <translation>VPN 设置</translation>
     </message>
 </context>
 <context>

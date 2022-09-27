@@ -44,7 +44,8 @@ Returns the return value of the executed command
 */
 uint WinCommander::runProcessElevated(const QString &path,
                                       const QStringList &parameters,
-                                      const QString &workingDir, bool aWait) {
+                                      const QString &workingDir,
+                                      bool hide, bool aWait) {
     uint result = 0;
 
 #ifdef Q_OS_WIN
@@ -75,7 +76,7 @@ uint WinCommander::runProcessElevated(const QString &path,
     shex.lpParameters = pszParameters;
     shex.lpDirectory  = pszDirectory;
     // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
-    shex.nShow        = SW_SHOWMINIMIZED;
+    shex.nShow        = hide ? SW_HIDE : SW_SHOWMINIMIZED;
 
     ShellExecuteEx(&shex);
     if (shex.hProcess)
@@ -98,17 +99,4 @@ uint WinCommander::runProcessElevated(const QString &path,
     Q_UNUSED(aWait);
 #endif
     return result;
-}
-
-/*!
-Executes a command elevated specified by \apath , using paramters \aparameters.
-\n
-Parameter /aaWait decides if the function should return immediatelly after it's\n
-execution or wait for the exit of the launched process
-\n
-Returns the return value of the executed command
-*/
-uint WinCommander::runProcessElevated(const QString &path, const QString &parameters, const QString &workingDir,
-                                      bool aWait) {
-    return runProcessElevated(path, QStringList() << parameters, workingDir, aWait);
 }

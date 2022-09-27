@@ -23,8 +23,6 @@ namespace QtGrpc {
     const char *GrpcStatusMessage = "grpc-message";
     const int GrpcMessageSizeHeaderSize = 5;
 
-    bool core_crashed = false;
-
     class Http2GrpcChannelPrivate : public QObject {
     private:
         QString url_base;
@@ -135,7 +133,7 @@ namespace QtGrpc {
         QNetworkReply::NetworkError Call(const QString &methodName,
                                          const google::protobuf::Message &req, google::protobuf::Message *rsp,
                                          int timeout_ms = 0) {
-            if (core_crashed) return QNetworkReply::NetworkError(-1919);
+            if (!NekoRay::dataStore->core_running) return QNetworkReply::NetworkError(-1919);
 
             std::string reqStr;
             req.SerializeToString(&reqStr);
@@ -187,20 +185,7 @@ namespace NekoRay::rpc {
 
     QString Client::Start(bool *rpcOK, const libcore::LoadConfigReq &request) {
         libcore::ErrorResp reply;
-        auto status = grpc_channel->Call("Start", request, &reply);
-
-        if (status == QNetworkReply::NoError) {
-            *rpcOK = true;
-            return {reply.error().c_str()};
-        } else {
-            NOT_OK
-            return "";
-        }
-    }
-
-    QString Client::SetTun(bool *rpcOK, const libcore::SetTunReq &request) {
-        libcore::ErrorResp reply;
-        auto status = grpc_channel->Call("SetTun", request, &reply);
+        auto status = grpc_channel->Call("Start", request, &reply, 3000);
 
         if (status == QNetworkReply::NoError) {
             *rpcOK = true;
@@ -252,10 +237,10 @@ namespace NekoRay::rpc {
         }
     }
 
-    std::string Client::ListV2rayConnections() {
+    std::string Client::ListConnections() {
         libcore::EmptyReq request;
-        libcore::ListV2rayConnectionsResp reply;
-        auto status = grpc_channel->Call("ListV2rayConnections", request, &reply, 500);
+        libcore::ListConnectionsResp reply;
+        auto status = grpc_channel->Call("ListConnections", request, &reply, 500);
 
         if (status == QNetworkReply::NoError) {
             return reply.matsuri_connections_json();

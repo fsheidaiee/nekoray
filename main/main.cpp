@@ -36,7 +36,10 @@ int main(int argc, char *argv[]) {
 
     // Clean
     QDir::setCurrent(QApplication::applicationDirPath());
-    QFile::remove("updater.old");
+    if (QFile::exists("updater.old")) {
+        QFile::remove("updater.old");
+        QFile::remove("sing-box.exe"); // v1.11
+    }
 #ifndef Q_OS_WIN
     if (!QFile::exists("updater")) {
         QFile::link("launcher", "updater");
@@ -47,6 +50,9 @@ int main(int argc, char *argv[]) {
     auto args = QApplication::arguments();
     if (args.contains("-many")) NekoRay::dataStore->flag_many = true;
     if (args.contains("-appdata")) NekoRay::dataStore->flag_use_appdata = true;
+#ifdef NKR_PACKAGE
+    NekoRay::dataStore->flag_use_appdata = true;
+#endif
 
     // dirs & clean
     auto wd = QDir(QApplication::applicationDirPath());
@@ -67,6 +73,7 @@ int main(int argc, char *argv[]) {
             return 0;
         }
     }
+    release_runguard = [&] { guard.release(); };
 
     // icons
     QIcon::setFallbackSearchPaths(QStringList{

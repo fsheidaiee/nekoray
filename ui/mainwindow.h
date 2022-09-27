@@ -14,7 +14,7 @@
 #include "db/Group.hpp"
 #include "main/GuiUtils.hpp"
 
-class QFileSystemWatcher;
+namespace NekoRay::sys { class CoreProcess; }
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -70,6 +70,8 @@ private slots:
 
     void on_menu_routing_settings_triggered();
 
+    void on_menu_vpn_settings_triggered();
+
     void on_menu_hotkey_settings_triggered();
 
     void on_menu_add_from_input_triggered();
@@ -108,6 +110,8 @@ private slots:
 
     void on_menu_update_subscripton_triggered();
 
+    void on_menu_resolve_domain_triggered();
+
     void on_proxyListTable_itemDoubleClicked(QTableWidgetItem *item);
 
     void on_proxyListTable_customContextMenuRequested(const QPoint &pos);
@@ -120,24 +124,22 @@ private:
     QShortcut *shortcut_ctrl_f = new QShortcut(QKeySequence("Ctrl+F"), this);
     QShortcut *shortcut_esc = new QShortcut(QKeySequence("Esc"), this);
     //
-    bool core_process_killed = false;
-    bool core_process_show_stderr = false;
+    NekoRay::sys::CoreProcess *core_process;
     qint64 vpn_pid = 0;
-    QFileSystemWatcher *watcher = nullptr;
     //
     bool qvLogAutoScoll = true;
     QTextDocument *qvLogDocument = new QTextDocument(this);
     //
-    QString title_base;
     QString title_error;
     int title_spmode = NekoRay::SystemProxyMode::DISABLE;
+    int icon_status = -1;
     QSharedPointer<NekoRay::ProxyEntity> running;
     QString traffic_update_cache;
     QTime last_test_time;
     //
     int proxy_last_order = -1;
     bool select_mode = false;
-    bool exit_update = false;
+    int exit_reason = 0;
 
     QMap<int, QSharedPointer<NekoRay::ProxyEntity>> get_now_selected();
 
@@ -169,8 +171,6 @@ private:
     void setup_grpc();
 
     void CheckUpdate();
-
-    bool Tun2rayStartStop(bool start);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;

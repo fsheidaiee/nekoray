@@ -47,6 +47,10 @@ include("cmake/nkr.cmake")
 
 find_package(Threads)
 
+if (NKR_PACKAGE)
+    add_compile_definitions(NKR_PACKAGE)
+endif()
+
 if (NKR_NO_EXTERNAL)
     add_compile_definitions(NKR_NO_EXTERNAL)
 else ()
@@ -113,7 +117,8 @@ set(PROJECT_SOURCES
         db/ProfileFilter.cpp
 
         fmt/AbstractBean.cpp
-        fmt/Bean2CoreObj.cpp
+        fmt/Bean2CoreObj_ray.cpp
+        fmt/Bean2CoreObj_box.cpp
         fmt/Bean2External.cpp
         fmt/Bean2Link.cpp
         fmt/InsecureHint.cpp
@@ -127,6 +132,7 @@ set(PROJECT_SOURCES
         sys/AutoRun.cpp
 
         ui/ThemeManager.cpp
+        ui/TrayIcon.cpp
 
         ui/mainwindow_grpc.cpp
         ui/mainwindow.cpp
@@ -178,6 +184,10 @@ set(PROJECT_SOURCES
         ui/dialog_manage_routes.cpp
         ui/dialog_manage_routes.h
         ui/dialog_manage_routes.ui
+
+        ui/dialog_vpn_settings.cpp
+        ui/dialog_vpn_settings.h
+        ui/dialog_vpn_settings.ui
 
         ui/dialog_hotkey.cpp
         ui/dialog_hotkey.h

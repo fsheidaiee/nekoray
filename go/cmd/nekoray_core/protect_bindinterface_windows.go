@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"log"
-	"nekoray_core/iphlpapi"
+	"neko/pkg/iphlpapi"
 	"net"
 	"strings"
 	"sync"
@@ -20,7 +20,7 @@ var lock sync.Mutex
 
 func init() {
 	internet.RegisterListenerController(func(network, address string, fd uintptr) error {
-		bindInterfaceIndex := getBindInterfaceIndex()
+		bindInterfaceIndex := getBindInterfaceIndex(address)
 		if bindInterfaceIndex != 0 {
 			if err := bindInterface(fd, bindInterfaceIndex, true, true); err != nil {
 				log.Println("bind inbound interface", err)
@@ -30,7 +30,7 @@ func init() {
 		return nil
 	})
 	internet.RegisterDialerController(func(network, address string, fd uintptr) error {
-		bindInterfaceIndex := getBindInterfaceIndex()
+		bindInterfaceIndex := getBindInterfaceIndex(address)
 		if bindInterfaceIndex != 0 {
 			var v4, v6 bool
 			if strings.HasSuffix(network, "6") {
@@ -47,6 +47,7 @@ func init() {
 		}
 		return nil
 	})
+	updateRoutes()
 	iphlpapi.RegisterNotifyRouteChange2(func(callerContext uintptr, row uintptr, notificationType uint32) uintptr {
 		updateRoutes()
 		return 0
@@ -68,14 +69,15 @@ func updateRoutes() {
 	}
 }
 
-func getBindInterfaceIndex() uint32 {
+func getBindInterfaceIndex(address string) uint32 {
+	host, _, _ := net.SplitHostPort(address)
+	if net.ParseIP(host).IsLoopback() {
+		return 0
+	}
+
 	lock.Lock()
 	defer lock.Unlock()
 
-	if routes == nil {
-		log.Println("warning: no routes info")
-		return 0
-	}
 	if interfaces == nil {
 		log.Println("warning: no interfaces info")
 		return 0
@@ -93,6 +95,11 @@ func getBindInterfaceIndex() uint32 {
 
 	// Not in VPN mode
 	if nextInterface == 0 {
+		return 0
+	}
+
+	if routes == nil {
+		log.Println("warning: no routes info")
 		return 0
 	}
 

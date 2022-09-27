@@ -2,6 +2,8 @@
 
 namespace NekoRay {
 
+    QString FindCoreAsset(const QString& name);
+
     class Routing : public JsonStore {
     public:
         QString direct_ip;
@@ -14,7 +16,7 @@ namespace NekoRay {
 
         explicit Routing(int preset = 0);
 
-        QString toString() const;
+        [[nodiscard]] QString toString() const;
 
         static QStringList List();
 
@@ -41,10 +43,13 @@ namespace NekoRay {
         QString core_token;
         int core_port = 19810;
         int started_id = -1919;
+        bool core_running = false;
+        bool core_prepare_exit = false;
 
         Routing *routing = new Routing;
         int imported_count = 0;
         bool refreshing_group_list = false;
+        int resolve_count = 0;
 
         // Flags
         bool flag_use_appdata = false;
@@ -53,7 +58,8 @@ namespace NekoRay {
         // Saved
 
         // Misc
-        QString core_path = "../nekoray_core";
+        int neko_core = CoreType::V2RAY;
+
         QString log_level = "warning";
         QString user_agent = "Nekoray/1.0 (Prefer Clash Format)";
         bool sub_use_proxy = false;
@@ -81,7 +87,7 @@ namespace NekoRay {
 
         // Socks & HTTP Inbound
         QString inbound_address = "127.0.0.1";
-        int inbound_socks_port = 2080;
+        int inbound_socks_port = 2080; // or Mixed
         int inbound_http_port = -2081;
         QString custom_inbound = "{\"inbounds\": []}";
 
@@ -104,6 +110,9 @@ namespace NekoRay {
         int vpn_implementation = 0;
         int vpn_mtu = 9000;
         bool vpn_ipv6 = false;
+        bool vpn_hide_consloe = false;
+        QString vpn_bypass_process = "";
+        QString vpn_bypass_cidr = "";
 
         // Hotkey
         QString hotkey_mainwindow = "";
@@ -121,3 +130,5 @@ namespace NekoRay {
     extern DataStore *dataStore;
 
 }
+
+#define IS_NEKO_BOX (NekoRay::dataStore->neko_core == NekoRay::CoreType::SING_BOX)

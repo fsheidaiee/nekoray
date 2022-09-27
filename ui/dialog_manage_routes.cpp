@@ -3,7 +3,6 @@
 
 #include "qv2ray/v2/ui/widgets/editors/w_JsonEditor.hpp"
 #include "qv2ray/v3/components/GeositeReader/GeositeReader.hpp"
-#include "fmt/Preset.hpp"
 #include "main/GuiUtils.hpp"
 
 #include <QFile>
@@ -30,26 +29,23 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) :
     ui->setupUi(this);
     title_base = windowTitle();
 
+    if (IS_NEKO_BOX) {
+        ui->enhance_resolve_server_domain->setVisible(false);
+        ui->domain_v2ray->setVisible(false);
+    } else {
+        ui->enhance_resolve_server_domain->setVisible(true);
+        ui->domain_v2ray->setVisible(true);
+    }
+    //
     ui->sniffing_mode->setCurrentIndex(NekoRay::dataStore->sniffing_mode);
     ui->outbound_domain_strategy->setCurrentText(NekoRay::dataStore->outbound_domain_strategy);
     ui->domainMatcherCombo->setCurrentIndex(NekoRay::dataStore->domain_matcher);
     ui->domainStrategyCombo->setCurrentText(NekoRay::dataStore->domain_strategy);
-    ui->fake_dns->setChecked(NekoRay::dataStore->fake_dns);
     ui->dns_routing->setChecked(NekoRay::dataStore->dns_routing);
     ui->dns_remote->setText(NekoRay::dataStore->remote_dns);
     ui->dns_direct->setText(NekoRay::dataStore->direct_dns);
     ui->enhance_resolve_server_domain->setChecked(NekoRay::dataStore->enhance_resolve_server_domain);
     D_C_LOAD_STRING(custom_route_global)
-    //
-    ui->vpn_implementation->setCurrentIndex(NekoRay::dataStore->vpn_implementation);
-    ui->vpn_mtu->setCurrentText(Int2String(NekoRay::dataStore->vpn_mtu));
-    ui->vpn_ipv6->setChecked(NekoRay::dataStore->vpn_ipv6);
-    //
-#ifdef Q_OS_WIN
-    ui->vpn_implementation->setItemText(0, Preset::SingBox::VpnImplementation[0]);
-    ui->vpn_implementation->setItemText(1, Preset::SingBox::VpnImplementation[1]);
-    ui->vpn_implementation->setItemText(2, Preset::SingBox::VpnImplementation[2]);
-#endif
     //
     connect(ui->custom_route_edit, &QPushButton::clicked, this, [=] {
         C_EDIT_JSON_ALLOW_EMPTY(custom_route)
@@ -62,12 +58,8 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) :
     builtInSchemesMenu->addActions(this->getBuiltInSchemes());
     ui->preset->setMenu(builtInSchemesMenu);
 
-    QString geoipFn = QApplication::applicationDirPath() + "/geoip.dat";
-    QString geositeFn = QApplication::applicationDirPath() + +"/geosite.dat";
-    if (!NekoRay::dataStore->v2ray_asset_dir.isEmpty()) {
-        geoipFn = NekoRay::dataStore->v2ray_asset_dir + "/geoip.dat";
-        geositeFn = NekoRay::dataStore->v2ray_asset_dir + "/geosite.dat";
-    }
+    QString geoipFn = NekoRay::FindCoreAsset("geoip.dat");
+    QString geositeFn = NekoRay::FindCoreAsset("geosite.dat");
     //
     const auto sourceStringsDomain = Qv2ray::components::GeositeReader::ReadGeoSiteFromFile(geoipFn);
     directDomainTxt = new AutoCompleteTextEdit("geosite", sourceStringsDomain, this);
@@ -105,24 +97,6 @@ void DialogManageRoutes::accept() {
     NekoRay::dataStore->direct_dns = ui->dns_direct->text();
     NekoRay::dataStore->enhance_resolve_server_domain = ui->enhance_resolve_server_domain->isChecked();
     D_C_SAVE_STRING(custom_route_global)
-    //
-    bool vpnChanged = false;
-    auto fakedns = ui->fake_dns->isChecked();
-    auto mtu = ui->vpn_mtu->currentText().toInt();
-    if (mtu > 10000 || mtu < 1000) mtu = 9000;
-    auto ipv6 = ui->vpn_ipv6->isChecked();
-    //
-    auto impl = ui->vpn_implementation->currentIndex();
-    vpnChanged |= NekoRay::dataStore->vpn_implementation != impl;
-    NekoRay::dataStore->vpn_implementation = impl;
-    //
-    vpnChanged |= NekoRay::dataStore->fake_dns != fakedns;
-    vpnChanged |= NekoRay::dataStore->vpn_mtu != mtu;
-    vpnChanged |= NekoRay::dataStore->vpn_ipv6 != ipv6;
-    NekoRay::dataStore->fake_dns = fakedns;
-    NekoRay::dataStore->vpn_mtu = mtu;
-    NekoRay::dataStore->vpn_ipv6 = ipv6;
-    //
     bool routeChanged = false;
     if (NekoRay::dataStore->active_routing != active_routing) routeChanged = true;
     SAVE_TO_ROUTING(NekoRay::dataStore->routing)
@@ -132,7 +106,6 @@ void DialogManageRoutes::accept() {
     //
     QString info = "UpdateDataStore";
     if (routeChanged) info += "RouteChanged";
-    if (vpnChanged) info += "VPNChanged";
     dialog_message(Dialog_DialogManageRoutes, info);
     QDialog::accept();
 }
@@ -200,7 +173,7 @@ void DialogManageRoutes::on_load_save_clicked() {
             r->fn = "routes/" + fn;
             if (r->Load()) {
                 auto btn = QMessageBox::question(nullptr,
-                                                 "NekoRay", tr("Load routing: %1").arg(fn) + "\n" + r->toString());
+                                                 software_name, tr("Load routing: %1").arg(fn) + "\n" + r->toString());
                 if (btn == QMessageBox::Yes) {
                     REFRESH_ACTIVE_ROUTING(fn, r)
                     w->accept();
@@ -214,7 +187,8 @@ void DialogManageRoutes::on_load_save_clicked() {
             auto r = std::make_unique<NekoRay::Routing>();
             SAVE_TO_ROUTING(r)
             r->fn = "routes/" + fn;
-            auto btn = QMessageBox::question(nullptr, "NekoRay", tr("Save routing: %1").arg(fn) + "\n" + r->toString());
+            auto btn = QMessageBox::question(nullptr, software_name,
+                                             tr("Save routing: %1").arg(fn) + "\n" + r->toString());
             if (btn == QMessageBox::Yes) {
                 r->Save();
                 REFRESH_ACTIVE_ROUTING(fn, r)
@@ -225,7 +199,7 @@ void DialogManageRoutes::on_load_save_clicked() {
     connect(remove, &QPushButton::clicked, w, [=] {
         auto fn = lineEdit->text();
         if (!fn.isEmpty() && NekoRay::Routing::List().length() > 1) {
-            auto btn = QMessageBox::question(nullptr, "NekoRay", tr("Remove routing: %1").arg(fn));
+            auto btn = QMessageBox::question(nullptr, software_name, tr("Remove routing: %1").arg(fn));
             if (btn == QMessageBox::Yes) {
                 QFile f("routes/" + fn);
                 f.remove();

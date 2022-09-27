@@ -1,7 +1,6 @@
 #include "./ui_mainwindow.h"
 #include "mainwindow.h"
 
-#include "fmt/Preset.hpp"
 #include "db/ProfileFilter.hpp"
 #include "db/ConfigBuilder.hpp"
 #include "sub/GroupUpdater.hpp"
@@ -9,10 +8,12 @@
 #include "sys/AutoRun.hpp"
 
 #include "ui/ThemeManager.hpp"
+#include "ui/TrayIcon.hpp"
 #include "ui/edit/dialog_edit_profile.h"
 #include "ui/dialog_basic_settings.h"
 #include "ui/dialog_manage_groups.h"
 #include "ui/dialog_manage_routes.h"
+#include "ui/dialog_vpn_settings.h"
 #include "ui/dialog_hotkey.h"
 
 #include "3rdparty/qrcodegen.hpp"
@@ -49,11 +50,6 @@
 #include <QMessageBox>
 #include <QDir>
 #include <QFileInfo>
-#include <QFileSystemWatcher>
-
-namespace QtGrpc {
-    extern bool core_crashed;
-}
 
 MainWindow::MainWindow(QWidget *parent)
         : QMainWindow(parent), ui(new Ui::MainWindow) {
@@ -75,7 +71,6 @@ MainWindow::MainWindow(QWidget *parent)
     // Setup misc UI
     themeManager->ApplyTheme(NekoRay::dataStore->theme);
     ui->setupUi(this);
-    title_base = windowTitle();
     connect(ui->menu_start, &QAction::triggered, this, [=]() { neko_start(); });
     connect(ui->menu_stop, &QAction::triggered, this, [=]() { neko_stop(); });
     connect(ui->tabWidget->tabBar(), &QTabBar::tabMoved, this, [=](int from, int to) {
@@ -98,6 +93,12 @@ MainWindow::MainWindow(QWidget *parent)
         }
     }
 
+    // software_name
+    if (IS_NEKO_BOX) {
+        software_name = "NekoBox";
+        software_core_name = "sing-box";
+    }
+
     // top bar
     ui->toolButton_program->setMenu(ui->menu_program);
     ui->toolButton_preferences->setMenu(ui->menu_preferences);
@@ -107,7 +108,7 @@ MainWindow::MainWindow(QWidget *parent)
             [=] { QDesktopServices::openUrl(QUrl("https://matsuridayo.github.io/")); });
     connect(ui->toolButton_ads, &QToolButton::clicked, this,
             [=] { QDesktopServices::openUrl(QUrl("https://matsuricom.github.io/")); });
-    connect(ui->toolButton_update, &QToolButton::clicked, this, [=] { CheckUpdate(); });
+    connect(ui->toolButton_update, &QToolButton::clicked, this, [=] { runOnNewThread([=] { CheckUpdate(); }); });
 
     // Setup log UI
     new SyntaxHighlighter(false, qvLogDocument);
@@ -228,15 +229,7 @@ MainWindow::MainWindow(QWidget *parent)
     this->refresh_groups();
 
     // Setup Tray
-    auto icon = QIcon::fromTheme("nekoray");
-    auto pixmap = QPixmap("../nekoray.png");
-    if (!pixmap.isNull()) icon = QIcon(pixmap);
-    pixmap = QPixmap("./nekoray.png");
-    if (!pixmap.isNull()) icon = QIcon(pixmap);
-    setWindowIcon(icon);
-
     tray = new QSystemTrayIcon(this);//初始化托盘对象tray
-    tray->setIcon(icon);//设定托盘图标，引号内是自定义的png图片路径
     tray->setContextMenu(ui->menu_program);//创建托盘菜单
     tray->show();//让托盘图标显示在系统托盘上
     connect(tray, &QSystemTrayIcon::activated, this,
@@ -305,7 +298,7 @@ MainWindow::MainWindow(QWidget *parent)
             r.load_control_force = true;
             r.fn = "routes/" + fn;
             if (r.Load()) {
-                auto btn = QMessageBox::question(GetMessageBoxParent(), "NekoRay",
+                auto btn = QMessageBox::question(GetMessageBoxParent(), software_name,
                                                  tr("Load routing and apply: %1").arg(fn) + "\n" + r.toString());
                 if (btn == QMessageBox::Yes) {
                     NekoRay::Routing::SetToActive(fn);
@@ -348,71 +341,37 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->menu_tcp_ping, &QAction::triggered, this, [=]() { speedtest_current_group(0); });
     connect(ui->menu_url_test, &QAction::triggered, this, [=]() { speedtest_current_group(1); });
     connect(ui->menu_full_test, &QAction::triggered, this, [=]() { speedtest_current_group(2); });
+    //
+    connect(ui->menu_share_item, &QMenu::aboutToShow, this, [=] {
+        auto name = software_core_name;
+        auto selected = get_now_selected();
+        if (!selected.isEmpty()) {
+            auto ent = selected.first();
+            name = ent->bean->DisplayCoreType();
+        }
+        ui->menu_export_config->setText(tr("Export %1 config").arg(name));
+    });
     refresh_status();
 
-    // Start Core
+    // Prepare core
     NekoRay::dataStore->core_token = GetRandomString(32);
     NekoRay::dataStore->core_port = MkPort();
     if (NekoRay::dataStore->core_port <= 0) NekoRay::dataStore->core_port = 19810;
 
-    runOnNewThread([=]() {
-        QString starting_info;
+    auto core_path = QApplication::applicationDirPath() + "/";
+    core_path += IS_NEKO_BOX ? "nekobox_core" : "nekoray_core";
 
-        auto core_path = NekoRay::dataStore->core_path;
-#ifdef Q_OS_WIN
-        if (!core_path.endsWith(".exe")) core_path += ".exe";
-#endif
-        if (NekoRay::dataStore->flag_use_appdata) {
-            core_path = QApplication::applicationDirPath() + "/nekoray_core";
-        } else if (!QFile(core_path).exists()) {
-            starting_info = "(not found)";
-            core_path = "";
-        }
-
-        QStringList args;
-        args.push_back("nekoray");
-        args.push_back("-port");
-        args.push_back(Int2String(NekoRay::dataStore->core_port));
+    QStringList args;
+    args.push_back(IS_NEKO_BOX ? "nekobox" : "nekoray");
+    args.push_back("-port");
+    args.push_back(Int2String(NekoRay::dataStore->core_port));
 #ifdef NKR_DEBUG
-        args.push_back("-debug");
+    args.push_back("-debug");
 #endif
 
-        for (int retry = 0; retry < 10; retry++) {
-            showLog("Starting nekoray core " + starting_info + "\n");
-            auto core_process = new QProcess;
-            core_process_show_stderr = false;
-            connect(core_process, &QProcess::readyReadStandardOutput, this,
-                    [=]() {
-                        showLog(core_process->readAllStandardOutput().trimmed());
-                    });
-            connect(core_process, &QProcess::readyReadStandardError, this,
-                    [=]() {
-                        auto log = core_process->readAllStandardError().trimmed();
-                        if (core_process_show_stderr) {
-                            showLog(log);
-                            return;
-                        }
-                        if (log.contains("token is set")) {
-                            core_process_show_stderr = true;
-                        }
-                    });
-            if (core_path.isEmpty()) break;
-            if (!NekoRay::dataStore->v2ray_asset_dir.isEmpty()) {
-                core_process->setEnvironment(QStringList{
-                        "V2RAY_LOCATION_ASSET=" + NekoRay::dataStore->v2ray_asset_dir
-                });
-            }
-            core_process->start(core_path, args);
-            core_process->write((NekoRay::dataStore->core_token + "\n").toUtf8());
-            core_process->waitForFinished(-1);
-            if (core_process_killed) return;
-            // TODO Not retrying can avoid crash?
-            core_process->deleteLater();
-            QtGrpc::core_crashed = true;
-            showLog("[ERROR] nekoray_core crashed, please restart the program.");
-            return;
-        }
-    });
+    // Start core
+    core_process = new NekoRay::sys::CoreProcess(core_path, args);
+    core_process->Start();
 
     setup_grpc();
 
@@ -483,6 +442,10 @@ void MainWindow::show_group(int gid) {
 // callback
 
 void MainWindow::dialog_message_impl(const QString &sender, const QString &info) {
+    if (info.contains("UpdateIcon")) {
+        icon_status = -1;
+        refresh_status();
+    }
     if (info.contains("UpdateDataStore")) {
         auto changed = NekoRay::dataStore->Save();
         if (info.contains("RouteChanged")) changed = true;
@@ -496,6 +459,11 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
         }
         refresh_status();
     }
+    if (info == "SwitchCore") {
+        this->exit_reason = 2;
+        on_menu_exit_triggered();
+    }
+    //
     if (sender == Dialog_DialogEditProfile) {
         if (info == "accept") {
             refresh_proxy_list();
@@ -508,7 +476,7 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
         // 订阅完毕
         refresh_proxy_list();
         if (!info.contains("dingyue")) {
-            MessageBoxInfo("NekoRay", tr("Imported %1 profile(s)").arg(NekoRay::dataStore->imported_count));
+            showLog(tr("Imported %1 profile(s)").arg(NekoRay::dataStore->imported_count));
         }
     } else if (sender == "ExternalProcess") {
         if (info == "Crashed") {
@@ -538,6 +506,10 @@ void MainWindow::on_menu_manage_groups_triggered() {
 
 void MainWindow::on_menu_routing_settings_triggered() {
     USE_DIALOG(DialogManageRoutes)
+}
+
+void MainWindow::on_menu_vpn_settings_triggered() {
+    USE_DIALOG(DialogVPNSettings)
 }
 
 void MainWindow::on_menu_hotkey_settings_triggered() {
@@ -570,13 +542,17 @@ void MainWindow::on_menu_exit_triggered() {
     //
     on_commitDataRequest();
     //
-    core_process_killed = true;
+    NekoRay::dataStore->core_prepare_exit = true;
     hide();
     ExitNekorayCore();
     //
-    if (exit_update) {
+    release_runguard();
+    if (exit_reason == 1) {
         QDir::setCurrent(QApplication::applicationDirPath());
         QProcess::startDetached("./updater", QStringList{});
+    } else if (exit_reason == 2) {
+        QDir::setCurrent(QApplication::applicationDirPath());
+        QProcess::startDetached("./nekoray", QStringList{});
     }
     qApp->quit();
 }
@@ -598,9 +574,10 @@ void MainWindow::neko_set_spmode(int mode, bool save) {
 
         if (mode == NekoRay::SystemProxyMode::SYSTEM_PROXY) {
 #ifdef Q_OS_WIN
-            if (mode == NekoRay::SystemProxyMode::SYSTEM_PROXY &&
+            if (mode == NekoRay::SystemProxyMode::SYSTEM_PROXY && !IS_NEKO_BOX &&
                 !InRange(NekoRay::dataStore->inbound_http_port, 0, 65535)) {
-                auto btn = QMessageBox::warning(this, "NekoRay", tr("Http inbound is not enabled, can't set system proxy."),
+                auto btn = QMessageBox::warning(this, software_name,
+                                                tr("Http inbound is not enabled, can't set system proxy."),
                                                 "OK", tr("Settings"), "", 0, 0);
                 if (btn == 1) {
                     on_menu_basic_settings_triggered();
@@ -608,9 +585,13 @@ void MainWindow::neko_set_spmode(int mode, bool save) {
                 return;
             }
 #endif
-            SetSystemProxy("127.0.0.1",
-                           NekoRay::dataStore->inbound_http_port,
-                           NekoRay::dataStore->inbound_socks_port);
+            auto socks_port = NekoRay::dataStore->inbound_socks_port;
+            auto http_port = NekoRay::dataStore->inbound_http_port;
+            if (IS_NEKO_BOX) {
+                http_port = socks_port;
+                socks_port = -1;
+            }
+            SetSystemProxy("127.0.0.1", http_port, socks_port);
         } else if (mode == NekoRay::SystemProxyMode::VPN) {
             if (!StartVPNProcess()) {
                 refresh_status();
@@ -652,10 +633,9 @@ void MainWindow::refresh_status(const QString &traffic_update) {
     if (InRange(NekoRay::dataStore->inbound_http_port, 0, 65535)) {
         display_http = DisplayAddress(NekoRay::dataStore->inbound_address, NekoRay::dataStore->inbound_http_port);
     }
-    auto inbound_txt = QString("Socks: %1\nHTTP: %2").arg(
-            DisplayAddress(NekoRay::dataStore->inbound_address, NekoRay::dataStore->inbound_socks_port),
-            display_http
-    );
+    auto display_socks = DisplayAddress(NekoRay::dataStore->inbound_address, NekoRay::dataStore->inbound_socks_port);
+    auto inbound_txt = QString("Socks: %1\nHTTP: %2").arg(display_socks, display_http);
+    if (IS_NEKO_BOX) inbound_txt = QString("Mixed: %1").arg(display_socks);
     ui->label_inbound->setText(inbound_txt);
     //
     ui->checkBox_VPN->setChecked(title_spmode == NekoRay::SystemProxyMode::VPN);
@@ -670,7 +650,7 @@ void MainWindow::refresh_status(const QString &traffic_update) {
         } else if (title_spmode == NekoRay::SystemProxyMode::VPN) {
             tt << "[" + tr("VPN Mode") + "]";
         }
-        tt << title_base;
+        tt << software_name;
         if (!isTray) tt << "(" + QString(NKR_VERSION) + ")";
         if (!NekoRay::dataStore->active_routing.isEmpty() && NekoRay::dataStore->active_routing != "Default") {
             tt << "[" + NekoRay::dataStore->active_routing + "]";
@@ -679,8 +659,24 @@ void MainWindow::refresh_status(const QString &traffic_update) {
         return tt.join(isTray ? "\n" : " ");
     };
 
+    auto icon_status_new = TrayIcon::NONE;
+    if (title_spmode == NekoRay::SystemProxyMode::SYSTEM_PROXY) {
+        icon_status_new = TrayIcon::SYSTEM_PROXY;
+    } else if (title_spmode == NekoRay::SystemProxyMode::VPN) {
+        icon_status_new = TrayIcon::VPN;
+    } else if (!running.isNull()) {
+        icon_status_new = TrayIcon::RUNNING;
+    }
+
     setWindowTitle(make_title(false));
-    if (tray != nullptr) tray->setToolTip(make_title(true));
+    if (icon_status_new != icon_status) setWindowIcon(TrayIcon::GetIcon(TrayIcon::NONE));
+
+    if (tray != nullptr) {
+        tray->setToolTip(make_title(true));
+        if (icon_status_new != icon_status) tray->setIcon(TrayIcon::GetIcon(icon_status_new));
+    }
+
+    icon_status = icon_status_new;
 }
 
 // table显示
@@ -785,8 +781,13 @@ void MainWindow::refresh_proxy_list_impl(const int &id, NekoRay::GroupSortAction
 
         // C4: Test Result
         f = f0->clone();
-        f->setText(profile->DisplayLatency());
-        if (!profile->full_test_report.isEmpty()) f->setText(profile->full_test_report);
+        if (profile->full_test_report.isEmpty()) {
+            auto color = profile->DisplayLatencyColor();
+            if (color.isValid()) f->setForeground(color);
+            f->setText(profile->DisplayLatency());
+        } else {
+            f->setText(profile->full_test_report);
+        }
         ui->proxyListTable->setItem(row, 4, f);
 
         // C5: Traffic
@@ -882,7 +883,7 @@ void MainWindow::on_proxyListTable_itemDoubleClicked(QTableWidgetItem *item) {
 
 #define NO_ADD_TO_SUBSCRIPTION_GROUP \
 if (!NekoRay::profileManager->CurrentGroup()->url.isEmpty()) { \
-MessageBoxWarning("NekoRay", MainWindow::tr("Manual addition of profiles is not allowed in subscription groupings.")); \
+MessageBoxWarning(software_name, MainWindow::tr("Manual addition of profiles is not allowed in subscription groupings.")); \
 return; \
 }
 
@@ -965,7 +966,7 @@ void MainWindow::on_menu_reset_traffic_triggered() {
 void MainWindow::on_menu_profile_debug_info_triggered() {
     auto ents = get_now_selected();
     if (ents.count() != 1) return;
-    auto btn = QMessageBox::information(this, "NekoRay", ents.first()->ToJsonBytes(), "OK", "Edit", "Reload", 0, 0);
+    auto btn = QMessageBox::information(this, software_name, ents.first()->ToJsonBytes(), "OK", "Edit", "Reload", 0, 0);
     if (btn == 1) {
         QDesktopServices::openUrl(QUrl::fromLocalFile(
                 QFileInfo(QString("profiles/%1.json").arg(ents.first()->id)).absoluteFilePath()
@@ -977,6 +978,10 @@ void MainWindow::on_menu_profile_debug_info_triggered() {
 }
 
 void MainWindow::on_menu_copy_links_triggered() {
+    if (ui->masterLogBrowser->hasFocus()) {
+        ui->masterLogBrowser->copy();
+        return;
+    };
     auto ents = get_now_selected();
     QStringList links;
     for (const auto &ent: ents) {
@@ -984,7 +989,7 @@ void MainWindow::on_menu_copy_links_triggered() {
     }
     if (links.length() == 0) return;
     QApplication::clipboard()->setText(links.join("\n"));
-    MessageBoxInfo("NekoRay", tr("Copied %1 item(s)").arg(links.length()));
+    showLog(tr("Copied %1 item(s)").arg(links.length()));
 }
 
 void MainWindow::on_menu_copy_links_nkr_triggered() {
@@ -995,15 +1000,23 @@ void MainWindow::on_menu_copy_links_nkr_triggered() {
     }
     if (links.length() == 0) return;
     QApplication::clipboard()->setText(links.join("\n"));
-    MessageBoxInfo("NekoRay", tr("Copied %1 item(s)").arg(links.length()));
+    showLog(tr("Copied %1 item(s)").arg(links.length()));
 }
 
 void MainWindow::on_menu_export_config_triggered() {
     auto ents = get_now_selected();
     if (ents.count() != 1) return;
     auto ent = ents.first();
-    auto result = NekoRay::BuildConfig(ent, false);
-    auto config_core = QJsonObject2QString(result->coreConfig, true);
+    QString config_core;
+
+    if (ent->bean->NeedExternal()) {
+        auto result = ent->bean->BuildExternal(114514, MkPort());
+        config_core = result.config_export.replace("127.0.0.1:114514", ent->bean->DisplayAddress());
+    } else {
+        auto result = NekoRay::BuildConfig(ent, false);
+        config_core = QJsonObject2QString(result->coreConfig, true);
+    }
+
     QApplication::clipboard()->setText(config_core);
     MessageBoxWarning(tr("Config copied"), config_core);
 }
@@ -1093,7 +1106,7 @@ void MainWindow::on_menu_scan_qr_triggered() {
     auto result = ReadBarcode(qpx.toImage(), hints);
     const auto &text = result.text();
     if (text.isEmpty()) {
-        MessageBoxInfo("NekoRay", tr("QR Code not found"));
+        MessageBoxInfo(software_name, tr("QR Code not found"));
     } else {
         NekoRay::sub::groupUpdater->AsyncUpdate(text);
     }
@@ -1105,6 +1118,7 @@ void MainWindow::on_menu_clear_test_result_triggered() {
         if (NekoRay::dataStore->current_group != profile->gid) continue;
         profile->latency = 0;
         profile->full_test_report = "";
+        profile->Save();
     }
     refresh_proxy_list();
 }
@@ -1174,6 +1188,32 @@ void MainWindow::on_menu_remove_unavailable_triggered() {
     }
 }
 
+void MainWindow::on_menu_resolve_domain_triggered() {
+    if (QMessageBox::question(this,
+                              tr("Confirmation"),
+                              tr("Resolving current group domain to IP, if support.")
+    ) != QMessageBox::StandardButton::Yes) {
+        return;
+    }
+    if (mw_sub_updating) return;
+    mw_sub_updating = true;
+
+    auto group = NekoRay::profileManager->CurrentGroup();
+    if (group == nullptr) return;
+
+    auto profiles = group->ProfilesWithOrder();
+    NekoRay::dataStore->resolve_count = profiles.length();
+
+    for (const auto &profile: profiles) {
+        profile->bean->ResolveDomainToIP([=] {
+            profile->Save();
+            if (--NekoRay::dataStore->resolve_count != 0) return;
+            refresh_proxy_list();
+            mw_sub_updating = false;
+        });
+    }
+}
+
 void MainWindow::on_proxyListTable_customContextMenuRequested(const QPoint &pos) {
     ui->menu_server->popup(ui->proxyListTable->viewport()->mapToGlobal(pos)); //弹出菜单
 }
@@ -1193,6 +1233,9 @@ void MainWindow::keyPressEvent(QKeyEvent *event) {
     switch (event->key()) {
         case Qt::Key_Escape:
             // take over by shortcut_esc
+            break;
+        case Qt::Key_Enter:
+            neko_start();
             break;
         default:
             QMainWindow::keyPressEvent(event);
@@ -1389,50 +1432,24 @@ void MainWindow::HotkeyEvent(const QString &key) {}
 
 // VPN Launcher
 
-//inline QString mshta_exec_uac = R"(vbscript:CreateObject("Shell.Application").ShellExecute("%1","%2","","runas",1)(window.close))";
-
 bool MainWindow::StartVPNProcess() {
     //
     if (vpn_pid != 0) {
         return true;
     }
-#ifdef Q_OS_WIN
-    auto configFn = ":/nekoray/vpn/sing-box-vpn.json";
-    if (QFile::exists("vpn/sing-box-vpn.json")) configFn = "vpn/sing-box-vpn.json";
-    auto config = ReadFileText(configFn)
-            .replace("%IPV6_ADDRESS%", NekoRay::dataStore->vpn_ipv6 ? "\"inet6_address\": \"fdfe:dcba:9876::1/128\"," : "")
-            .replace("%MTU%", Int2String(NekoRay::dataStore->vpn_mtu))
-            .replace("%STACK%", Preset::SingBox::VpnImplementation[NekoRay::dataStore->vpn_implementation])
-            .replace("%PORT%", Int2String(NekoRay::dataStore->inbound_socks_port));
-#else
-    auto protectPath = QDir::currentPath() + "/protect";
-    auto configFn = ":/nekoray/vpn/vpn-run-root.sh";
-    if (QFile::exists("vpn/vpn-run-root.sh")) configFn = "vpn/vpn-run-root.sh";
-    auto config = ReadFileText(configFn)
-            .replace("$PORT", Int2String(NekoRay::dataStore->inbound_socks_port))
-            .replace("$USE_NEKORAY", "1")
-            .replace("$ENABLE_IPV6", NekoRay::dataStore->vpn_ipv6 ? "1" : "")
-            .replace("./nekoray_core", QApplication::applicationDirPath() + "/nekoray_core")
-            .replace("./tun2socks", QApplication::applicationDirPath() + "/tun2socks")
-            .replace("$PROTECT_LISTEN_PATH", protectPath)
-            .replace("$TUN_NAME", "nekoray-tun")
-            .replace("$USER_ID", Int2String((int) getuid()))
-            .replace("$MTU", Int2String(NekoRay::dataStore->vpn_mtu))
-            .replace("$TABLE_FWMARK", "514");
-#endif
     //
-    QFile file;
-    file.setFileName(QFileInfo(configFn).fileName());
-    file.open(QIODevice::ReadWrite | QIODevice::Truncate);
-    file.write(config.toUtf8());
-    file.close();
-    auto configPath = QFileInfo(file).absoluteFilePath();
+    auto protectPath = QDir::currentPath() + "/protect";
+    auto configPath = NekoRay::WriteVPNSingBoxConfig();
+    auto scriptPath = NekoRay::WriteVPNLinuxScript(protectPath, configPath);
     //
 #ifdef Q_OS_WIN
     runOnNewThread([=] {
         vpn_pid = 1; //TODO get pid?
-        WinCommander::runProcessElevated(QApplication::applicationDirPath() + "/sing-box.exe",
-                                         {"run", "-c", configPath}); // blocking
+        WinCommander::runProcessElevated(QApplication::applicationDirPath() + "/nekobox_core.exe",
+                                         {"--disable-color", "run", "-c", configPath},
+                                         "",
+                                         NekoRay::dataStore->vpn_hide_consloe
+        ); // blocking
         vpn_pid = 0;
         runOnUiThread([=] {
             neko_set_spmode(NekoRay::SystemProxyMode::DISABLE);
@@ -1448,33 +1465,14 @@ bool MainWindow::StartVPNProcess() {
     auto vpn_process = new QProcess;
     QProcess::connect(vpn_process, &QProcess::stateChanged, mainwindow, [=](QProcess::ProcessState state) {
         if (state == QProcess::NotRunning) {
-            if (watcher != nullptr) {
-                watcher->deleteLater();
-                watcher = nullptr;
-            }
             vpn_pid = 0;
             vpn_process->deleteLater();
             GetMainWindow()->neko_set_spmode(NekoRay::SystemProxyMode::DISABLE);
         }
     });
-    if (watcher != nullptr) {
-        watcher->deleteLater();
-        watcher = nullptr;
-    }
-    watcher = new QFileSystemWatcher({QDir::currentPath()});
-    connect(watcher, &QFileSystemWatcher::directoryChanged, this, [=] {
-        if (!QFile::exists(protectPath)) return;
-        if (!Tun2rayStartStop(true)) {
-            neko_set_spmode(NekoRay::SystemProxyMode::DISABLE);
-        }
-        if (watcher != nullptr) {
-            watcher->deleteLater();
-            watcher = nullptr;
-        }
-    });
     //
     vpn_process->setProcessChannelMode(QProcess::ForwardedChannels);
-    vpn_process->start("pkexec", {"bash", configPath});
+    vpn_process->start("pkexec", {"bash", scriptPath});
     vpn_process->waitForStarted();
     vpn_pid = vpn_process->processId(); // actually it's pkexec or bash PID
 #endif
@@ -1484,8 +1482,11 @@ bool MainWindow::StartVPNProcess() {
 bool MainWindow::StopVPNProcess() {
     if (vpn_pid != 0) {
         bool ok;
+        core_process->processId();
 #ifdef Q_OS_WIN
-        auto ret = WinCommander::runProcessElevated("taskkill", {"/IM", "sing-box.exe"});
+        auto ret = WinCommander::runProcessElevated("taskkill", {"/IM", "nekobox_core.exe",
+                                                                 "/FI",
+                                                                 "PID ne " + Int2String(core_process->processId())});
         ok = ret == 0;
 #else
         QProcess p;
@@ -1495,7 +1496,6 @@ bool MainWindow::StopVPNProcess() {
 #endif
         if (ok) {
             vpn_pid = 0;
-            Tun2rayStartStop(false);
         } else {
             MessageBoxWarning(tr("Error"), tr("Failed to stop VPN process"));
         }

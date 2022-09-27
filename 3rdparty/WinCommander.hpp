@@ -31,12 +31,7 @@ public:
     static uint runProcessElevated(const QString &path,
                                    const QStringList &parameters = QStringList(),
                                    const QString &workingDir = QString(),
-                                   bool aWait = true);
-
-    static uint runProcessElevated(const QString &path,
-                                   const QString &parameters = QString(),
-                                   const QString &workingDir = QString(),
-                                   bool aWait = true);
+                                   bool hide = false, bool aWait = true);
 };
 
 #endif // WINCOMMANDER_H

@@ -7,29 +7,25 @@ import (
 	"fmt"
 	"io"
 	"libcore"
-	"libcore/device"
 	"libcore/stun"
-	"nekoray_core/gen"
+	"neko/gen"
+	"neko/pkg/grpc_server"
+	"neko/pkg/neko_common"
+	"neko/pkg/speedtest"
 	"net"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-var instance *libcore.V2RayInstance
-
-func setupCore() {
-	device.IsNekoray = true
-	libcore.SetConfig("", false, true)
-	libcore.InitCore("", "", "", nil, ".", "moe.nekoray.pc:bg", true, 50)
+type server struct {
+	grpc_server.BaseServer
 }
 
 func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.ErrorResp, _ error) {
 	var err error
 
-	// only error use this
 	defer func() {
 		out = &gen.ErrorResp{}
 		if err != nil {
@@ -38,7 +34,7 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 		}
 	}()
 
-	if nekoray_debug {
+	if neko_common.Debug {
 		logrus.Println("Start:", in)
 	}
 
@@ -61,35 +57,12 @@ func (s *server) Start(ctx context.Context, in *gen.LoadConfigReq) (out *gen.Err
 		return
 	}
 
-	TunSetV2ray(instance)
-
-	return
-}
-
-func (s *server) SetTun(ctx context.Context, in *gen.SetTunReq) (out *gen.ErrorResp, _ error) {
-	var err error
-
-	// only error use this
-	defer func() {
-		out = &gen.ErrorResp{}
-		if err != nil {
-			out.Error = err.Error()
-		}
-	}()
-
-	if in.Implementation >= 0 { //Start
-		err = TunStart(in)
-	} else { //Stop
-		TunStop()
-	}
-
 	return
 }
 
 func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp, _ error) {
 	var err error
 
-	// only error use this
 	defer func() {
 		out = &gen.ErrorResp{}
 		if err != nil {
@@ -101,19 +74,9 @@ func (s *server) Stop(ctx context.Context, in *gen.EmptyReq) (out *gen.ErrorResp
 		return
 	}
 
-	TunSetV2ray(nil)
-
 	err = instance.Close()
 	instance = nil
 
-	return
-}
-
-func (s *server) Exit(ctx context.Context, in *gen.EmptyReq) (out *gen.EmptyResp, _ error) {
-	out = &gen.EmptyResp{}
-
-	// Connection closed
-	os.Exit(0)
 	return
 }
 
@@ -127,7 +90,7 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 		}
 	}()
 
-	if nekoray_debug {
+	if neko_common.Debug {
 		logrus.Println("Test:", in)
 	}
 
@@ -159,31 +122,15 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 
 		// Latency
 		var t int32
-		t, err = libcore.UrlTestV2ray(i, in.Inbound, in.Url, in.Timeout)
+		t, err = speedtest.UrlTest(getProxyHttpClient(i), in.Url, in.Timeout)
 		out.Ms = t // sn: ms==0 是错误
 	} else if in.Mode == gen.TestMode_TcpPing {
-		host, port, err := net.SplitHostPort(in.Address)
-		if err != nil {
-			out.Error = err.Error()
-			return
-		}
-		ip, err := net.ResolveIPAddr("ip", host)
-		if err != nil {
-			out.Error = err.Error()
-			return
-		}
-		//
-		startTime := time.Now()
-		_, err = net.DialTimeout("tcp", net.JoinHostPort(ip.String(), port), time.Duration(in.Timeout)*time.Millisecond)
-		endTime := time.Now()
-		if err == nil {
-			out.Ms = int32(endTime.Sub(startTime).Milliseconds())
-		}
+		out.Ms, err = speedtest.TcpPing(in.Address, in.Timeout)
 	} else if in.Mode == gen.TestMode_FullTest {
 		if in.Config == nil {
 			return
 		}
-
+		// TODO del
 		// Test instance
 		i := libcore.NewV2rayInstance()
 		i.ForTest = true
@@ -202,7 +149,7 @@ func (s *server) Test(ctx context.Context, in *gen.TestReq) (out *gen.TestResp, 
 		// Latency
 		var latency string
 		if in.FullLatency {
-			t, _ := libcore.UrlTestV2ray(i, in.Inbound, in.Url, in.Timeout)
+			t, _ := speedtest.UrlTest(getProxyHttpClient(i), in.Url, in.Timeout)
 			out.Ms = t
 			if t > 0 {
 				latency = fmt.Sprint(t, "ms")
@@ -328,8 +275,8 @@ func (s *server) QueryStats(ctx context.Context, in *gen.QueryStatsReq) (out *ge
 	return
 }
 
-func (s *server) ListV2RayConnections(ctx context.Context, in *gen.EmptyReq) (*gen.ListV2RayConnectionsResp, error) {
-	out := &gen.ListV2RayConnectionsResp{
+func (s *server) ListConnections(ctx context.Context, in *gen.EmptyReq) (*gen.ListConnectionsResp, error) {
+	out := &gen.ListConnectionsResp{
 		MatsuriConnectionsJson: libcore.ListV2rayConnections(),
 	}
 	return out, nil
