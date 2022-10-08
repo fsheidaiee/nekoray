@@ -1,10 +1,14 @@
 # NekoRay
 
-基于 Qt/C++ 的跨平台代理配置管理器（ 使用 Matsuri 定制版 v2ray-core ）
+基于 Qt/C++ 的跨平台 GUI 代理配置管理器
+
+后端 1. v2ray 2. sing-box
 
 目前支持 Windows / Linux amd64 开箱即用
 
-Qt/C++ based cross-platform proxy configuration manager ( Use Matsuri custom version of v2ray-core )
+Qt/C++ based cross-platform GUI proxy configuration manager
+
+backend: 1. v2ray 2.sing-box
 
 Support Windows / Linux amd64 out of the box now.
 
@@ -44,7 +48,7 @@ https://matsuridayo.github.io
 
 launcher 参数
 
-* `./launcher -- -appdata` `--` 后的参数传递给主程序
+* `./launcher -- -appdata` ( `--` 后的参数传递给主程序 )
 * `-debug` Debug mode
 * `-theme` Use local QT theme (unstable) (1.0+)
 
@@ -62,6 +66,7 @@ launcher 参数
 - [MatsuriDayo/Matsuri](https://github.com/MatsuriDayo/Matsuri)
 - [MatsuriDayo/v2ray-core](https://github.com/MatsuriDayo/v2ray-core)
 - [SagerNet/sing-box](https://github.com/SagerNet/sing-box)
+- [Qv2ray](https://github.com/Qv2ray/Qv2ray)
 - [Qt](https://www.qt.io/)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
 - [yaml-cpp](https://github.com/jbeder/yaml-cpp)
