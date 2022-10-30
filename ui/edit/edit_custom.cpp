@@ -3,7 +3,7 @@
 
 #include "qv2ray/v2/ui/widgets/editors/w_JsonEditor.hpp"
 #include "fmt/CustomBean.hpp"
-#include "ui/edit/gen_hysteria.h"
+#include "fmt/Preset.hpp"
 
 EditCustom::EditCustom(QWidget *parent) :
         QWidget(parent), ui(new Ui::EditCustom) {
@@ -15,12 +15,6 @@ EditCustom::EditCustom(QWidget *parent) :
                                           "  host: your-domain.com\n"
                                           "  sni: your-domain.com\n"
     );
-    if (IS_NEKO_BOX) {
-        ui->core->hide();
-        ui->core_l->hide();
-        ui->command->hide();
-        ui->command_l->hide();
-    }
 }
 
 EditCustom::~EditCustom() {
@@ -34,13 +28,30 @@ void EditCustom::onStart(QSharedPointer<NekoRay::ProxyEntity> _ent) {
     // load known core
     auto core_map = QString2QJsonObject(NekoRay::dataStore->extraCore->core_map);
     for (const auto &key: core_map.keys()) {
+        if (key == "naive" || key == "hysteria") continue;
         ui->core->addItem(key);
     }
+    if (preset_core == "hysteria") {
+        preset_command = Preset::Hysteria::command;
+        preset_config = Preset::Hysteria::config;
+        ui->config_simple->setPlaceholderText("");
+        ui->core->hide();
+        ui->core_l->setText(
+                tr("Please read the documentation. If you don't understand, use a share link instead."));
+    } else if (preset_core == "internal") {
+        preset_command = preset_config = "";
+        ui->config_simple->setPlaceholderText("{\n"
+                                              "    \"type\": \"socks\",\n"
+                                              "    // ...\n"
+                                              "}");
+    }
 
+    // load core ui
     P_LOAD_COMBO(core)
     ui->command->setText(bean->command.join(" "));
     P_LOAD_STRING(config_simple)
 
+    // custom external
     if (!bean->core.isEmpty()) {
         ui->core->setDisabled(true);
     } else if (!preset_core.isEmpty()) {
@@ -51,17 +62,16 @@ void EditCustom::onStart(QSharedPointer<NekoRay::ProxyEntity> _ent) {
         ui->config_simple->setText(preset_config);
     }
 
-    // Generators
-    if (bean->core == "hysteria") {
-        ui->generator->setVisible(true);
-        auto genHy = new GenHysteria(ent);
-        ui->generator->layout()->addWidget(genHy);
-        connect(genHy, &GenHysteria::config_generated, this, [=](const QString &result) {
-            ui->config_simple->setText(result);
-        });
-    } else {
-        ui->generator->setVisible(false);
+    // custom internal
+    if (preset_core == "internal") {
+        ui->core->hide();
+        ui->core_l->setText(tr("Outbound JSON, please read the documentation."));
+        ui->command->hide();
+        ui->command_l->hide();
     }
+
+    // Generators
+    ui->generator->setVisible(false);
 }
 
 bool EditCustom::onEnd() {
@@ -70,6 +80,11 @@ bool EditCustom::onEnd() {
     P_SAVE_COMBO(core)
     bean->command = ui->command->text().split(" ");
     P_SAVE_STRING_QTEXTEDIT(config_simple)
+
+    if (bean->core.isEmpty()) {
+        MessageBoxWarning(software_name, tr("Please pick a core."));
+        return false;
+    }
 
     return true;
 }

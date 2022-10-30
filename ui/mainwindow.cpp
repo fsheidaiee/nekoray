@@ -97,6 +97,9 @@ MainWindow::MainWindow(QWidget *parent)
     if (IS_NEKO_BOX) {
         software_name = "NekoBox";
         software_core_name = "sing-box";
+        if (NekoRay::dataStore->log_level == "warning") {
+            NekoRay::dataStore->log_level = "info";
+        }
     }
 
     // top bar
@@ -104,9 +107,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->toolButton_preferences->setMenu(ui->menu_preferences);
     ui->toolButton_server->setMenu(ui->menu_server);
     ui->menubar->setVisible(false);
-#ifdef NKR_PACKAGE
-    ui->toolButton_update->hide();
-#endif
     connect(ui->toolButton_document, &QToolButton::clicked, this,
             [=] { QDesktopServices::openUrl(QUrl("https://matsuridayo.github.io/")); });
     connect(ui->toolButton_ads, &QToolButton::clicked, this,
@@ -115,6 +115,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     // Setup log UI
     new SyntaxHighlighter(false, qvLogDocument);
+    qvLogDocument->setUndoRedoEnabled(false);
+    ui->masterLogBrowser->setUndoRedoEnabled(false);
     ui->masterLogBrowser->setDocument(qvLogDocument);
     ui->masterLogBrowser->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     {
@@ -255,11 +257,12 @@ MainWindow::MainWindow(QWidget *parent)
     //
     ui->menu_program_preference->addActions(ui->menu_preferences->actions());
     connect(ui->menu_add_from_clipboard2, &QAction::triggered, ui->menu_add_from_clipboard, &QAction::trigger);
+    connect(ui->actionRestart_Program, &QAction::triggered, this, [=] { dialog_message("", "RestartProgram"); });
     //
     connect(ui->menu_program, &QMenu::aboutToShow, this, [=]() {
         ui->actionRemember_last_proxy->setChecked(NekoRay::dataStore->remember_enable);
         ui->actionStart_with_system->setChecked(GetProcessAutoRunSelf());
-        ui->actionAllow_LAN->setChecked(NekoRay::dataStore->inbound_address == "0.0.0.0");
+        ui->actionAllow_LAN->setChecked(QStringList{"::", "0.0.0.0"}.contains(NekoRay::dataStore->inbound_address));
         // active server
         for (const auto &old: ui->menuActive_Server->actions()) {
             ui->menuActive_Server->removeAction(old);
@@ -322,12 +325,15 @@ MainWindow::MainWindow(QWidget *parent)
         SetProcessAutoRunSelf(checked);
     });
     connect(ui->actionAllow_LAN, &QAction::triggered, this, [=](bool checked) {
-        NekoRay::dataStore->inbound_address = checked ? "0.0.0.0" : "127.0.0.1";
+        NekoRay::dataStore->inbound_address = checked ? "::" : "127.0.0.1";
         dialog_message("", "UpdateDataStore");
     });
     //
     connect(ui->checkBox_VPN, &QCheckBox::clicked, this, [=](bool checked) {
         neko_set_spmode(checked ? NekoRay::SystemProxyMode::VPN : NekoRay::SystemProxyMode::DISABLE);
+    });
+    connect(ui->checkBox_SystemProxy, &QCheckBox::clicked, this, [=](bool checked) {
+        neko_set_spmode(checked ? NekoRay::SystemProxyMode::SYSTEM_PROXY : NekoRay::SystemProxyMode::DISABLE);
     });
     connect(ui->menu_spmode, &QMenu::aboutToShow, this, [=]() {
         ui->menu_spmode_disabled->setChecked(title_spmode == NekoRay::SystemProxyMode::DISABLE);
@@ -346,13 +352,17 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->menu_full_test, &QAction::triggered, this, [=]() { speedtest_current_group(2); });
     //
     connect(ui->menu_share_item, &QMenu::aboutToShow, this, [=] {
-        auto name = software_core_name;
+        QString name;
         auto selected = get_now_selected();
         if (!selected.isEmpty()) {
             auto ent = selected.first();
             name = ent->bean->DisplayCoreType();
         }
+        ui->menu_export_config->setVisible(name == software_core_name);
         ui->menu_export_config->setText(tr("Export %1 config").arg(name));
+    });
+    connect(ui->menugroup, &QMenu::aboutToShow, this, [=] {
+        ui->menu_full_test->setVisible(!IS_NEKO_BOX);
     });
     refresh_status();
 
@@ -462,7 +472,7 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
         }
         refresh_status();
     }
-    if (info == "SwitchCore") {
+    if (info == "RestartProgram") {
         this->exit_reason = 2;
         on_menu_exit_triggered();
     }
@@ -484,6 +494,8 @@ void MainWindow::dialog_message_impl(const QString &sender, const QString &info)
     } else if (sender == "ExternalProcess") {
         if (info == "Crashed") {
             neko_stop();
+        } else if (info.startsWith("CoreRestarted")) {
+            neko_start(info.split(",")[1].toInt());
         }
     }
 }
@@ -576,7 +588,7 @@ void MainWindow::neko_set_spmode(int mode, bool save) {
         // ENABLE
 
         if (mode == NekoRay::SystemProxyMode::SYSTEM_PROXY) {
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
             if (mode == NekoRay::SystemProxyMode::SYSTEM_PROXY && !IS_NEKO_BOX &&
                 !InRange(NekoRay::dataStore->inbound_http_port, 0, 65535)) {
                 auto btn = QMessageBox::warning(this, software_name,
@@ -592,9 +604,8 @@ void MainWindow::neko_set_spmode(int mode, bool save) {
             auto http_port = NekoRay::dataStore->inbound_http_port;
             if (IS_NEKO_BOX) {
                 http_port = socks_port;
-                socks_port = -1;
             }
-            SetSystemProxy("127.0.0.1", http_port, socks_port);
+            SetSystemProxy(http_port, socks_port);
         } else if (mode == NekoRay::SystemProxyMode::VPN) {
             if (!StartVPNProcess()) {
                 refresh_status();
@@ -642,6 +653,7 @@ void MainWindow::refresh_status(const QString &traffic_update) {
     ui->label_inbound->setText(inbound_txt);
     //
     ui->checkBox_VPN->setChecked(title_spmode == NekoRay::SystemProxyMode::VPN);
+    ui->checkBox_SystemProxy->setChecked(title_spmode == NekoRay::SystemProxyMode::SYSTEM_PROXY);
     if (select_mode) ui->label_running->setText("[" + tr("Select") + "]");
 
     auto make_title = [=](bool isTray) {
@@ -1012,13 +1024,8 @@ void MainWindow::on_menu_export_config_triggered() {
     auto ent = ents.first();
     QString config_core;
 
-    if (ent->bean->NeedExternal()) {
-        auto result = ent->bean->BuildExternal(114514, MkPort());
-        config_core = result.config_export.replace("127.0.0.1:114514", ent->bean->DisplayAddress());
-    } else {
-        auto result = NekoRay::BuildConfig(ent, false);
-        config_core = QJsonObject2QString(result->coreConfig, true);
-    }
+    auto result = NekoRay::BuildConfig(ent, false, true);
+    config_core = QJsonObject2QString(result->coreConfig, true);
 
     QApplication::clipboard()->setText(config_core);
     MessageBoxWarning(tr("Config copied"), config_core);
@@ -1161,9 +1168,7 @@ void MainWindow::on_menu_update_subscripton_triggered() {
     if (group->url.isEmpty()) return;
     if (mw_sub_updating) return;
     mw_sub_updating = true;
-    NekoRay::sub::groupUpdater->AsyncUpdate(group->url, group->id, this, [=] {
-        mw_sub_updating = false;
-    });
+    NekoRay::sub::groupUpdater->AsyncUpdate(group->url, group->id, [&] { mw_sub_updating = false; });
 }
 
 void MainWindow::on_menu_remove_unavailable_triggered() {
@@ -1290,6 +1295,7 @@ void MainWindow::on_masterLogBrowser_customContextMenuRequested(const QPoint &po
     action_clear->setData(-1);
     connect(action_clear, &QAction::triggered, this, [=] {
         qvLogDocument->clear();
+        ui->masterLogBrowser->clear();
     });
     menu->addAction(action_clear);
 
@@ -1475,7 +1481,12 @@ bool MainWindow::StartVPNProcess() {
     });
     //
     vpn_process->setProcessChannelMode(QProcess::ForwardedChannels);
+#ifdef Q_OS_MACOS
+    vpn_process->start("osascript", {"-e", QString("do shell script \"%1\" with administrator privileges")
+            .arg("bash " + scriptPath)});
+#else
     vpn_process->start("pkexec", {"bash", scriptPath});
+#endif
     vpn_process->waitForStarted();
     vpn_pid = vpn_process->processId(); // actually it's pkexec or bash PID
 #endif
@@ -1493,7 +1504,12 @@ bool MainWindow::StopVPNProcess() {
         ok = ret == 0;
 #else
         QProcess p;
+#ifdef Q_OS_MACOS
+        p.start("osascript", {"-e", QString("do shell script \"%1\" with administrator privileges")
+                .arg("pkill -2 -U 0 nekobox_core")});
+#else
         p.start("pkexec", {"pkill", "-2", "-P", Int2String(vpn_pid)});
+#endif
         p.waitForFinished();
         ok = p.exitCode() == 0;
 #endif

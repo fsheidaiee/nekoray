@@ -11,11 +11,12 @@ namespace NekoRay {
 
     // Common
 
-    QSharedPointer<BuildConfigResult> BuildConfig(const QSharedPointer<ProxyEntity> &ent, bool forTest) {
+    QSharedPointer<BuildConfigResult>
+    BuildConfig(const QSharedPointer<ProxyEntity> &ent, bool forTest, bool forExport) {
         if (IS_NEKO_BOX) {
-            return BuildConfigSingBox(ent, forTest);
+            return BuildConfigSingBox(ent, forTest, forExport);
         }
-        return BuildConfigV2Ray(ent, forTest);
+        return BuildConfigV2Ray(ent, forTest, forExport);
     }
 
     QString BuildChain(int chainId, const QSharedPointer<BuildConfigStatus> &status) {
@@ -78,7 +79,8 @@ namespace NekoRay {
         }
     }
 
-    QSharedPointer<BuildConfigResult> BuildConfigV2Ray(const QSharedPointer<ProxyEntity> &ent, bool forTest) {
+    QSharedPointer<BuildConfigResult>
+    BuildConfigV2Ray(const QSharedPointer<ProxyEntity> &ent, bool forTest, bool forExport) {
         auto result = QSharedPointer<BuildConfigResult>(new BuildConfigResult);
         auto status = QSharedPointer<BuildConfigStatus>(new BuildConfigStatus);
         status->ent = ent;
@@ -319,6 +321,7 @@ namespace NekoRay {
     QString BuildChainInternal(int chainId, const QList<QSharedPointer<ProxyEntity>> &ents,
                                const QSharedPointer<BuildConfigStatus> &status) {
         QString chainTag = "c-" + Int2String(chainId);
+        QString chainTagOut;
         bool muxApplied = false;
 
         QString pastTag;
@@ -338,9 +341,11 @@ namespace NekoRay {
             if (index == ents.length() - 1) {
                 needGlobal = true;
                 tagOut = "g-" + Int2String(ent->id);
-                if (chainId == 0) {
-                    tagOut = "proxy";
-                }
+            }
+
+            // last profile set as "proxy"
+            if (chainId == 0 && index == 0) {
+                tagOut = "proxy";
             }
 
             if (needGlobal) {
@@ -374,7 +379,7 @@ namespace NekoRay {
                 }
             } else {
                 // index == 0 means last profile in chain / not chain
-                chainTag = tagOut;
+                chainTagOut = tagOut;
                 status->result->outboundStat = ent->traffic_data;
             }
 
@@ -420,9 +425,13 @@ namespace NekoRay {
             if (ent->bean->NeedExternal()) {
                 auto ext_socks_port = MkPort();
                 extR = ent->bean->BuildExternal(mapping_port, ext_socks_port);
+                if (extR.program.isEmpty()) {
+                    status->result->error = QObject::tr("Core not found: %1").arg(ent->bean->DisplayType());
+                    return {};
+                }
                 if (!extR.error.isEmpty()) { // rejected
                     status->result->error = extR.error;
-                    return "";
+                    return {};
                 }
 
                 // SOCKS OUTBOUND
@@ -516,12 +525,13 @@ namespace NekoRay {
             index++;
         }
 
-        return chainTag;
+        return chainTagOut;
     }
 
     // SingBox
 
-    QSharedPointer<BuildConfigResult> BuildConfigSingBox(const QSharedPointer<ProxyEntity> &ent, bool forTest) {
+    QSharedPointer<BuildConfigResult>
+    BuildConfigSingBox(const QSharedPointer<ProxyEntity> &ent, bool forTest, bool forExport) {
         auto result = QSharedPointer<BuildConfigResult>(new BuildConfigResult);
         auto status = QSharedPointer<BuildConfigStatus>(new BuildConfigStatus);
         status->ent = ent;
@@ -715,15 +725,21 @@ namespace NekoRay {
         // final add routing rule
         QJSONARRAY_ADD(routingRules, QString2QJsonObject(dataStore->custom_route_global)["rules"].toArray())
         QJSONARRAY_ADD(routingRules, status->routingRules)
-        result->coreConfig.insert("route", QJsonObject{
+        auto routeObj = QJsonObject{
                 {"rules",                 routingRules},
                 {"auto_detect_interface", true},
                 {"geoip",                 QJsonObject{{"path", geoip},},},
                 {"geosite",               QJsonObject{{"path", geosite},},}
-        });
+        };
+        if (forExport) {
+            routeObj.remove("geoip");
+            routeObj.remove("geosite");
+            routeObj.remove("auto_detect_interface");
+        }
+        result->coreConfig.insert("route", routeObj);
 
         // api
-        if (dataStore->traffic_loop_interval > 0) {
+        if (!forTest && !forExport && dataStore->traffic_loop_interval > 0) {
             result->coreConfig.insert("experimental", QJsonObject{
                     {"v2ray_api", QJsonObject{
                             {"listen", "127.0.0.1:" + Int2String(dataStore->inbound_socks_port + 10)},
@@ -754,6 +770,11 @@ namespace NekoRay {
                              {"ip_cidr",  QList2QJsonArray(arr)}};
             cidr_rule = "," + QJsonObject2QString(rule, false);
         }
+        //
+        auto tun_name = "nekoray-tun";
+#ifdef Q_OS_MACOS
+        tun_name = "utun9";
+#endif
         // gen config
         auto configFn = ":/neko/vpn/sing-box-vpn.json";
         if (QFile::exists("vpn/sing-box-vpn.json")) configFn = "vpn/sing-box-vpn.json";
@@ -763,6 +784,7 @@ namespace NekoRay {
                 .replace("%STACK%", Preset::SingBox::VpnImplementation.value(dataStore->vpn_implementation))
                 .replace("%PROCESS_NAME_RULE%", process_name_rule)
                 .replace("%CIDR_RULE%", cidr_rule)
+                .replace("%TUN_NAME%", tun_name)
                 .replace("%PORT%", Int2String(dataStore->inbound_socks_port));
         // write config
         QFile file;

@@ -33,6 +33,7 @@ int main(int argc, char *argv[]) {
     QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
 #endif
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
+    QApplication::setQuitOnLastWindowClosed(false);
 
     // Clean
     QDir::setCurrent(QApplication::applicationDirPath());
@@ -50,7 +51,7 @@ int main(int argc, char *argv[]) {
     auto args = QApplication::arguments();
     if (args.contains("-many")) NekoRay::dataStore->flag_many = true;
     if (args.contains("-appdata")) NekoRay::dataStore->flag_use_appdata = true;
-#ifdef NKR_PACKAGE
+#ifdef NKR_CPP_USE_APPDATA
     NekoRay::dataStore->flag_use_appdata = true;
 #endif
 

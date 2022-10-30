@@ -90,30 +90,35 @@ namespace NekoRay::sys {
             if (!dataStore->core_prepare_exit && state == QProcess::NotRunning) {
                 if (failed_to_start) return; // no retry
 
+                restart_id = NekoRay::dataStore->started_id;
+                dialog_message("ExternalProcess", "Crashed");
                 showLog("[Error] core exited, restarting.\n");
 
                 // Restart
-                auto t = new QTimer;
-                connect(t, &QTimer::timeout, this, [=] {
+                setTimeout([=] {
                     Kill();
                     ExternalProcess::started = false;
                     Start();
-                    t->deleteLater();
-                });
-                t->setSingleShot(true);
-                t->setInterval(1000);
-                t->start();
+                }, this, 1000);
+            } else if (state == QProcess::Running && restart_id >= 0) {
+                // Restart profile
+                setTimeout([=] {
+                    dialog_message("ExternalProcess", "CoreRestarted," + Int2String(restart_id));
+                    restart_id = -1;
+                }, this, 1000);
             }
         });
     }
 
     void CoreProcess::Start() {
         show_stderr = false;
+        env = QStringList();
         auto v2ray_asset_dir = FindCoreAsset("geoip.dat");
         if (!v2ray_asset_dir.isEmpty()) {
             v2ray_asset_dir = QFileInfo(v2ray_asset_dir).absolutePath();
-            env = QStringList{"V2RAY_LOCATION_ASSET=" + v2ray_asset_dir};
+            env << "V2RAY_LOCATION_ASSET=" + v2ray_asset_dir;
         }
+        env << "GODEBUG=netdns=go";
         ExternalProcess::Start();
         write((dataStore->core_token + "\n").toUtf8());
     }

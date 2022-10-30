@@ -2,6 +2,7 @@
 #include "ui_dialog_basic_settings.h"
 
 #include "qv2ray/v2/ui/widgets/editors/w_JsonEditor.hpp"
+#include "fmt/Preset.hpp"
 #include "ui/ThemeManager.hpp"
 #include "main/GuiUtils.hpp"
 #include "main/NekoRay.hpp"
@@ -78,6 +79,22 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         C_EDIT_JSON_ALLOW_EMPTY(custom_inbound)
     });
 
+#ifdef Q_OS_WIN
+    connect(ui->sys_proxy_format, &QPushButton::clicked, this, [=] {
+        bool ok;
+        auto str = QInputDialog::getItem(this, ui->sys_proxy_format->text() + " (Windows)",
+                                         tr("Advanced system proxy settings. Please select a format."),
+                                         Preset::Windows::system_proxy_format,
+                                         Preset::Windows::system_proxy_format.indexOf(
+                                                 NekoRay::dataStore->system_proxy_format),
+                                         false, &ok
+        );
+        if (ok) NekoRay::dataStore->system_proxy_format = str;
+    });
+#else
+    ui->sys_proxy_format->hide();
+#endif
+
     // Style
     if (IS_NEKO_BOX) {
         ui->connection_statistics_box->setDisabled(true);
@@ -128,6 +145,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
 
     ui->user_agent->setText(NekoRay::dataStore->user_agent);
     D_LOAD_BOOL(sub_use_proxy)
+    D_LOAD_BOOL(sub_clear)
 
     // Core
 
@@ -202,7 +220,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
             file.open(QIODevice::ReadWrite | QIODevice::Truncate);
             file.write(Int2String(neko_core_new).toUtf8());
             file.close();
-            dialog_message("", "SwitchCore");
+            dialog_message("", "RestartProgram");
         }
     };
     connect(ui->switch_core_v2ray, &QRadioButton::clicked, this, switch_core_on_click);
@@ -251,6 +269,7 @@ void DialogBasicSettings::accept() {
 
     NekoRay::dataStore->user_agent = ui->user_agent->text();
     D_SAVE_BOOL(sub_use_proxy)
+    D_SAVE_BOOL(sub_clear)
 
     // Core
 

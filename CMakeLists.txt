@@ -30,6 +30,11 @@ if (NKR_CROSS)
     set_property(TARGET Qt5::lupdate PROPERTY IMPORTED_LOCATION /usr/bin/lupdate)
 endif ()
 
+if (NKR_PACKAGE OR NKR_PACKAGE_MACOS)
+    message("[add_compile_definitions] NKR_CPP_USE_APPDATA")
+    add_compile_definitions(NKR_CPP_USE_APPDATA)
+endif ()
+
 # Windows
 include("cmake/fuck_windows/fuck.cmake")
 
@@ -50,10 +55,6 @@ include("cmake/print.cmake")
 include("cmake/nkr.cmake")
 
 find_package(Threads)
-
-if (NKR_PACKAGE)
-    add_compile_definitions(NKR_PACKAGE)
-endif ()
 
 if (NKR_NO_EXTERNAL)
     add_compile_definitions(NKR_NO_EXTERNAL)
@@ -165,9 +166,6 @@ set(PROJECT_SOURCES
         ui/edit/edit_trojan_vless.h
         ui/edit/edit_trojan_vless.cpp
         ui/edit/edit_trojan_vless.ui
-        ui/edit/gen_hysteria.h
-        ui/edit/gen_hysteria.cpp
-        ui/edit/gen_hysteria.ui
 
         ui/edit/edit_naive.h
         ui/edit/edit_naive.cpp
@@ -256,10 +254,17 @@ target_link_libraries(nekoray PRIVATE
         ${PLATFORM_FUCKING_LIBRARIES}
         )
 
+set(MACOSX_ICON ${CMAKE_SOURCE_DIR}/res/nekoray.icns)
+
+if (APPLE)
+    target_sources(nekoray PRIVATE ${MACOSX_ICON})
+endif ()
+
 set_target_properties(nekoray PROPERTIES
-        MACOSX_BUNDLE_GUI_IDENTIFIER my.example.com
-        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+        MACOSX_BUNDLE_ICON_FILE "nekoray.icns"
+        RESOURCE ${MACOSX_ICON}
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/MacOSXBundleInfo.plist
+        MACOSX_BUNDLE_GUI_IDENTIFIER moe.nekoray.macosx
         MACOSX_BUNDLE TRUE
         WIN32_EXECUTABLE TRUE
         )

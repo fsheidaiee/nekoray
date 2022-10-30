@@ -124,7 +124,13 @@ namespace NekoRay::fmt {
             auto scy = objN["scy"].toString();
             if (!scy.isEmpty()) security = scy;
             // TLS (XTLS?)
-            if (!objN["tls"].toString().isEmpty()) stream->security = "tls";
+            if (!objN["tls"].toString().isEmpty() && objN["tls"].toString().toLower() != "none")
+                stream->security = "tls";
+            if (stream->security == "tls" && IsIpAddress(serverAddress) &&
+                (!stream->host.isEmpty()) && stream->sni.isEmpty()) {
+                // v2rayN config builder generate sni like this, so set sni here for their format.
+                stream->sni = stream->host;
+            }
             // TODO quic & kcp
             return true;
         }

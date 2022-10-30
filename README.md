@@ -1,16 +1,12 @@
 # NekoRay
 
-基于 Qt/C++ 的跨平台 GUI 代理配置管理器
+Qt based cross-platform GUI proxy configuration manager (backend: v2ray / sing-box)
 
-后端 1. v2ray 2. sing-box
+Support Windows / Linux / macOS amd64 out of the box now.
 
-目前支持 Windows / Linux amd64 开箱即用
+基于 Qt 的跨平台代理配置管理器 (后端 v2ray / sing-box)
 
-Qt/C++ based cross-platform GUI proxy configuration manager
-
-backend: 1. v2ray 2.sing-box
-
-Support Windows / Linux amd64 out of the box now.
+目前支持 Windows / Linux / macOS amd64 开箱即用
 
 ## 下载 Download
 
@@ -55,6 +51,8 @@ launcher 参数
 已知部分 Linux 发行版无法使用预编译版、非 x86_64 暂无适配，可以尝试自行编译。
 
 Ubuntu 22.04: `sudo apt install libxcb-xinerama0`
+
+If you are using Arch Linux, you can install via [AUR](https://aur.archlinux.org/packages/nekoray)
 
 ## 编译教程
 
