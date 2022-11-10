@@ -35,7 +35,7 @@ namespace NekoRay::fmt {
             password = url.password();
             if (serverPort == -1) serverPort = socks_http_type == type_HTTP ? 443 : 1080;
 
-            stream->security = GetQueryValue(query, "security", "") == "true" ? "tls" : "none";
+            stream->security = GetQueryValue(query, "security", "");
             stream->sni = GetQueryValue(query, "sni");
         }
         return true;
@@ -52,7 +52,7 @@ namespace NekoRay::fmt {
         password = url.userName();
         if (serverPort == -1) serverPort = 443;
 
-        stream->network = GetQueryValue(query, "type", "tcp").replace("http", "h2");
+        stream->network = GetQueryValue(query, "type", "tcp");
         stream->security = GetQueryValue(query, "security", "tls");
         auto sni1 = GetQueryValue(query, "sni");
         auto sni2 = GetQueryValue(query, "peer");
@@ -64,7 +64,7 @@ namespace NekoRay::fmt {
         if (stream->network == "ws") {
             stream->path = GetQueryValue(query, "path", "");
             stream->host = GetQueryValue(query, "host", "");
-        } else if (stream->network == "h2") {
+        } else if (stream->network == "http") {
             stream->path = GetQueryValue(query, "path", "");
             stream->host = GetQueryValue(query, "host", "").replace("|", ",");
         } else if (stream->network == "grpc") {
@@ -119,18 +119,12 @@ namespace NekoRay::fmt {
             stream->path = objN["path"].toString();
             stream->sni = objN["sni"].toString();
             stream->header_type = objN["type"].toString();
-            auto net = objN["net"].toString().replace("http", "h2");
+            auto net = objN["net"].toString();
             if (!net.isEmpty()) stream->network = net;
             auto scy = objN["scy"].toString();
             if (!scy.isEmpty()) security = scy;
             // TLS (XTLS?)
-            if (!objN["tls"].toString().isEmpty() && objN["tls"].toString().toLower() != "none")
-                stream->security = "tls";
-            if (stream->security == "tls" && IsIpAddress(serverAddress) &&
-                (!stream->host.isEmpty()) && stream->sni.isEmpty()) {
-                // v2rayN config builder generate sni like this, so set sni here for their format.
-                stream->sni = stream->host;
-            }
+            stream->security = objN["tls"].toString();
             // TODO quic & kcp
             return true;
         }

@@ -22,6 +22,23 @@ namespace NekoRay::sub {
 
     GroupUpdater *groupUpdater = new GroupUpdater;
 
+    void RawUpdater_FixEnt(const QSharedPointer<ProxyEntity> &ent) {
+        if (ent == nullptr) return;
+        auto stream = fmt::GetStreamSettings(ent->bean.get());
+        if (stream == nullptr) return;
+        // 1. "security"
+        if (stream->security == "none" || stream->security == "0" || stream->security == "false") {
+            stream->security = "";
+        } else if (stream->security == "xtls" || stream->security == "1" || stream->security == "true") {
+            stream->security = "tls";
+        }
+        // 2. TLS SNI: v2rayN config builder generate sni like this, so set sni here for their format.
+        if (stream->security == "tls" && IsIpAddress(ent->bean->serverAddress)
+            && (!stream->host.isEmpty()) && stream->sni.isEmpty()) {
+            stream->sni = stream->host;;
+        }
+    }
+
     void RawUpdater::update(const QString &str) {
         // Base64 encoded subscription
         if (auto str2 = DecodeB64IfValid(str);!str2.isEmpty()) {
@@ -45,9 +62,11 @@ namespace NekoRay::sub {
         }
 
         QSharedPointer<ProxyEntity> ent;
+        bool needFix = true;
 
         // Nekoray format
         if (str.startsWith("nekoray://")) {
+            needFix = false;
             auto link = QUrl(str);
             if (!link.isValid()) return;
             ent = ProfileManager::NewProxyEntity(link.host());
@@ -55,7 +74,7 @@ namespace NekoRay::sub {
             auto j = DecodeB64IfValid(link.fragment().toUtf8(), QByteArray::Base64UrlEncoding);
             if (j.isEmpty()) return;
             ent->bean->FromJsonBytes(j.toUtf8());
-            showLog("nekoray format: " + ent->bean->DisplayTypeAndName());
+            MW_show_log("nekoray format: " + ent->bean->DisplayTypeAndName());
         }
 
         // SOCKS
@@ -87,7 +106,7 @@ namespace NekoRay::sub {
             if (!ok) return;
         }
 
-        // VMess
+        // VLESS
         if (str.startsWith("vless://")) {
             ent = ProfileManager::NewProxyEntity("vless");
             auto ok = ent->TrojanVLESSBean()->TryParseLink(str);
@@ -103,6 +122,7 @@ namespace NekoRay::sub {
 
         // Naive
         if (str.startsWith("naive+")) {
+            needFix = false;
             ent = ProfileManager::NewProxyEntity("naive");
             auto ok = ent->NaiveBean()->TryParseLink(str);
             if (!ok) return;
@@ -110,6 +130,7 @@ namespace NekoRay::sub {
 
         // Hysteria
         if (str.startsWith("hysteria://")) {
+            needFix = false;
             // https://github.com/HyNetwork/hysteria/wiki/URI-Scheme
             ent = ProfileManager::NewProxyEntity("custom");
             auto bean = ent->CustomBean();
@@ -122,6 +143,7 @@ namespace NekoRay::sub {
             bean->core = "hysteria";
             bean->command = QString(Preset::Hysteria::command).split(" ");
             auto result = QString2QJsonObject(Preset::Hysteria::config);
+            result["server_name"] = url.host(); // default sni
             result["obfs"] = query.queryItemValue("obfsParam");
             result["insecure"] = query.queryItemValue("insecure") == "1";
             result["up_mbps"] = query.queryItemValue("upmbps").toInt();
@@ -133,8 +155,12 @@ namespace NekoRay::sub {
             bean->config_simple = QJsonObject2QString(result, false);
         }
 
-        // End
         if (ent == nullptr) return;
+
+        // Fix
+        if (needFix) RawUpdater_FixEnt(ent);
+
+        // End
         profileManager->AddProfile(ent, gid_add_to);
         update_counter++;
     }
@@ -188,6 +214,7 @@ namespace NekoRay::sub {
 
                 auto ent = ProfileManager::NewProxyEntity(type);
                 if (ent->bean->version == -114514) continue;
+                bool needFix = false;
 
                 // common
                 ent->bean->name = Node2QString(proxy["name"]);
@@ -217,6 +244,7 @@ namespace NekoRay::sub {
                     if (Node2Bool(proxy["tls"])) bean->stream->security = "tls";
                     if (Node2Bool(proxy["skip-cert-verify"])) bean->stream->allow_insecure = true;
                 } else if (type == "trojan") {
+                    needFix = true;
                     auto bean = ent->TrojanVLESSBean();
                     bean->password = Node2QString(proxy["password"]);
                     bean->stream->security = "tls";
@@ -224,11 +252,12 @@ namespace NekoRay::sub {
                     bean->stream->sni = FIRST_OR_SECOND(Node2QString(proxy["sni"]), Node2QString(proxy["servername"]));
                     if (Node2Bool(proxy["skip-cert-verify"])) bean->stream->allow_insecure = true;
                 } else if (type == "vmess") {
+                    needFix = true;
                     auto bean = ent->VMessBean();
                     bean->uuid = Node2QString(proxy["uuid"]);
                     bean->aid = Node2Int(proxy["alterId"]);
                     bean->security = Node2QString(proxy["cipher"]);
-                    bean->stream->network = Node2QString(proxy["network"], "tcp");
+                    bean->stream->network = Node2QString(proxy["network"], "tcp").replace("h2", "http");
                     bean->stream->sni = FIRST_OR_SECOND(Node2QString(proxy["sni"]), Node2QString(proxy["servername"]));
                     if (Node2Bool(proxy["tls"])) bean->stream->security = "tls";
                     if (Node2Bool(proxy["skip-cert-verify"])) bean->stream->allow_insecure = true;
@@ -251,7 +280,7 @@ namespace NekoRay::sub {
 
                     auto h2 = NodeChild(proxy, {"h2-opts", "h2-opt"});
                     if (h2.IsMap()) {
-                        auto hosts = ws["host"];
+                        auto hosts = h2["host"];
                         for (auto host: hosts) {
                             bean->stream->host = Node2QString(host);
                             break;
@@ -280,6 +309,7 @@ namespace NekoRay::sub {
                     continue;
                 }
 
+                if (needFix) RawUpdater_FixEnt(ent);
                 profileManager->AddProfile(ent, gid_add_to);
                 update_counter++;
             }
@@ -330,11 +360,11 @@ namespace NekoRay::sub {
         // 网络请求
         if (asURL) {
             auto groupName = group == nullptr ? content : group->name;
-            showLog(">>>>>>>> " + QObject::tr("Requesting subscription: %1").arg(groupName));
+            MW_show_log(">>>>>>>> " + QObject::tr("Requesting subscription: %1").arg(groupName));
 
             auto resp = NetworkRequestHelper::HttpGet(content);
             if (!resp.error.isEmpty()) {
-                showLog("<<<<<<<< " + QObject::tr("Requesting subscription %1 error: %2")
+                MW_show_log("<<<<<<<< " + QObject::tr("Requesting subscription %1 error: %2")
                         .arg(groupName, resp.error + "\n" + resp.data));
                 return;
             }
@@ -359,7 +389,7 @@ namespace NekoRay::sub {
             group->Save();
             //
             if (dataStore->sub_clear) {
-                showLog(QObject::tr("Clearing servers..."));
+                MW_show_log(QObject::tr("Clearing servers..."));
                 for (const auto &profile: in) {
                     profileManager->DeleteProfile(profile->id);
                 }
@@ -392,19 +422,15 @@ namespace NekoRay::sub {
                 notice_deleted += ent->bean->DisplayTypeAndName() + "\n";
             }
 
-            runOnUiThread([=] {
-                auto change = "\n" + QObject::tr("Added %1 profiles:\n%2\nDeleted %3 Profiles:\n%4")
-                        .arg(only_out.length()).arg(notice_added)
-                        .arg(only_in.length()).arg(notice_deleted);
-                if (only_out.length() + only_in.length() == 0) change = QObject::tr("Nothing");
-                showLog("<<<<<<<< " + QObject::tr("Change of %1:").arg(group->name) + " " + change);
-                dialog_message("SubUpdater", "finish-dingyue");
-            });
+            auto change = "\n" + QObject::tr("Added %1 profiles:\n%2\nDeleted %3 Profiles:\n%4")
+                    .arg(only_out.length()).arg(notice_added)
+                    .arg(only_in.length()).arg(notice_deleted);
+            if (only_out.length() + only_in.length() == 0) change = QObject::tr("Nothing");
+            MW_show_log("<<<<<<<< " + QObject::tr("Change of %1:").arg(group->name) + " " + change);
+            MW_dialog_message("SubUpdater", "finish-dingyue");
         } else {
             NekoRay::dataStore->imported_count = rawUpdater->update_counter;
-            runOnUiThread([=] {
-                dialog_message("SubUpdater", "finish");
-            });
+            MW_dialog_message("SubUpdater", "finish");
         }
     }
 }

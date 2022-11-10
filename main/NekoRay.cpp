@@ -39,9 +39,8 @@ namespace NekoRay {
         _add(new configItem("enhance_domain", &enhance_resolve_server_domain, itemType::boolean));
         _add(new configItem("remember_id", &remember_id, itemType::integer));
         _add(new configItem("remember_enable", &remember_enable, itemType::boolean));
-        _add(new configItem("start_minimal", &start_minimal, itemType::boolean));
         _add(new configItem("language", &language, itemType::integer));
-        _add(new configItem("spmode", &system_proxy_mode, itemType::integer));
+        _add(new configItem("spmode", &remember_spmode, itemType::integer));
         _add(new configItem("insecure_hint", &insecure_hint, itemType::boolean));
         _add(new configItem("skip_cert", &skip_cert, itemType::boolean));
         _add(new configItem("hk_mw", &hotkey_mainwindow, itemType::string));
@@ -54,7 +53,8 @@ namespace NekoRay {
         _add(new configItem("vpn_impl", &vpn_implementation, itemType::integer));
         _add(new configItem("vpn_mtu", &vpn_mtu, itemType::integer));
         _add(new configItem("vpn_ipv6", &vpn_ipv6, itemType::boolean));
-        _add(new configItem("vpn_hide_console", &vpn_hide_consloe, itemType::boolean));
+        _add(new configItem("vpn_hide_console", &vpn_hide_console, itemType::boolean));
+        _add(new configItem("vpn_strict_route", &vpn_strict_route, itemType::boolean));
         _add(new configItem("vpn_bypass_process", &vpn_bypass_process, itemType::string));
         _add(new configItem("vpn_bypass_cidr", &vpn_bypass_cidr, itemType::string));
         _add(new configItem("check_include_pre", &check_include_pre, itemType::boolean));
@@ -170,7 +170,10 @@ namespace NekoRay {
             auto item = _item.get();
             switch (item->type) {
                 case itemType::string:
-                    object.insert(item->name, *(QString *) item->ptr);
+                    // Allow Empty
+                    if (!((QString *) item->ptr)->isEmpty()) {
+                        object.insert(item->name, *(QString *) item->ptr);
+                    }
                     break;
                 case itemType::integer:
                     object.insert(item->name, *(int *) item->ptr);

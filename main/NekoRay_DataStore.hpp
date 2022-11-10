@@ -45,6 +45,8 @@ namespace NekoRay {
         int started_id = -1919;
         bool core_running = false;
         bool core_prepare_exit = false;
+        int running_spmode = NekoRay::SystemProxyMode::DISABLE;
+        bool need_keep_vpn_off = false;
 
         Routing *routing = new Routing;
         int imported_count = 0;
@@ -54,6 +56,7 @@ namespace NekoRay {
         // Flags
         bool flag_use_appdata = false;
         bool flag_many = false;
+        bool flag_tray = false;
 
         // Saved
 
@@ -82,10 +85,9 @@ namespace NekoRay {
         bool skip_cert = false;
 
         // Remember
-        int system_proxy_mode = NekoRay::SystemProxyMode::DISABLE;
+        int remember_spmode = NekoRay::SystemProxyMode::DISABLE;
         int remember_id = -1919;
         bool remember_enable = false;
-        bool start_minimal = false;
 
         // Socks & HTTP Inbound
         QString inbound_address = "127.0.0.1";
@@ -112,7 +114,8 @@ namespace NekoRay {
         int vpn_implementation = 0;
         int vpn_mtu = 9000;
         bool vpn_ipv6 = false;
-        bool vpn_hide_consloe = false;
+        bool vpn_hide_console = false;
+        bool vpn_strict_route = false;
         QString vpn_bypass_process = "";
         QString vpn_bypass_cidr = "";
 

@@ -6,9 +6,9 @@ namespace NekoRay::fmt {
     class V2rayStreamSettings : public JsonStore {
     public:
         QString network = "tcp";
-        QString security = "none";
-        QString packet_encoding = ""; // sing-box only vmess
-        // ws/h2/grpc/tcp-http
+        QString security = "";
+        QString packet_encoding = "";
+        // ws/http/grpc/tcp-http
         QString path = "";
         QString host = "";
         // kcp/quic/tcp-http
@@ -17,6 +17,7 @@ namespace NekoRay::fmt {
         QString sni = "";
         QString alpn = "";
         QString certificate = "";
+        QString utls = "";
         bool allow_insecure = false;
         // ws early data
         QString ws_early_data_name = "";
@@ -35,6 +36,7 @@ namespace NekoRay::fmt {
             _add(new configItem("h_type", &header_type, itemType::string));
             _add(new configItem("ed_name", &ws_early_data_name, itemType::string));
             _add(new configItem("ed_len", &ws_early_data_length, itemType::integer));
+            _add(new configItem("utls", &utls, itemType::string));
         }
 
         QJsonObject BuildStreamSettingsV2Ray();

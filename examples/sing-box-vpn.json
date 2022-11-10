@@ -3,7 +3,7 @@
         "servers": [
             {
                 "tag": "dns-direct",
-                "address": "local",
+                "address": "underlying://0.0.0.0",
                 "detour": "direct"
             }
         ]
@@ -16,6 +16,7 @@
             %IPV6_ADDRESS%
             "mtu": %MTU%,
             "auto_route": true,
+            "strict_route": %STRICT_ROUTE%,
             "stack": "%STACK%",
             "endpoint_independent_nat": true,
             "sniff": false

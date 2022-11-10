@@ -5,10 +5,10 @@
 #include "SocksHttpBean.hpp"
 
 namespace NekoRay::fmt {
-    QString DisplayInsecureHint(const QSharedPointer<AbstractBean> &bean) {
+    QString AbstractBean::DisplayInsecureHint() {
         if (!dataStore->insecure_hint) return {};
-        auto insecure_hint = bean->InsecureHint();
-        auto stream = GetStreamSettings(bean.data());
+        auto insecure_hint = InsecureHint();
+        auto stream = GetStreamSettings(this);
         if (stream != nullptr) insecure_hint += "\n" + stream->InsecureHint();
         return insecure_hint.trimmed();
     }
@@ -35,7 +35,7 @@ namespace NekoRay::fmt {
 
     QString VMessBean::InsecureHint() {
         if (security == "none" || security == "zero") {
-            if (stream->security.isEmpty() || stream->security == "none") {
+            if (stream->security.isEmpty()) {
                 return QObject::tr(
                         "This profile is cleartext, don't use it if the server is not in your local network.");
             }
@@ -51,14 +51,14 @@ namespace NekoRay::fmt {
     }
 
     QString TrojanVLESSBean::InsecureHint() {
-        if (stream->security.isEmpty() || stream->security == "none") {
+        if (stream->security.isEmpty()) {
             return QObject::tr("This profile is cleartext, don't use it if the server is not in your local network.");
         }
         return {};
     }
 
     QString SocksHttpBean::InsecureHint() {
-        if (stream->security.isEmpty() || stream->security == "none") {
+        if (stream->security.isEmpty()) {
             return QObject::tr("This profile is cleartext, don't use it if the server is not in your local network.");
         }
         return {};

@@ -152,10 +152,6 @@
         <translation>连接统计</translation>
     </message>
     <message>
-        <source>Minimize to tray icon on startup</source>
-        <translation>启动时最小化到托盘图标</translation>
-    </message>
-    <message>
         <source>Include Pre-release when checking update</source>
         <translation>检查更新时包括 Pre-release</translation>
     </message>
@@ -340,14 +336,6 @@
     <message>
         <source>Already set</source>
         <translation>已设置</translation>
-    </message>
-    <message>
-        <source>Path</source>
-        <translation>路径(Path)</translation>
-    </message>
-    <message>
-        <source>Host</source>
-        <translation>主机(Host)</translation>
     </message>
     <message>
         <source>Packet Encoding</source>
@@ -1098,7 +1086,7 @@ End: %2</source>
         <translation>重置流量</translation>
     </message>
     <message>
-        <source>Delete Repeat</source>
+        <source>Remove Duplicates</source>
         <translation>删除重复的配置</translation>
     </message>
     <message>
@@ -1146,7 +1134,7 @@ End: %2</source>
         <translation>克隆</translation>
     </message>
     <message>
-        <source>Update subscripton</source>
+        <source>Update subscription</source>
         <translation>更新订阅</translation>
     </message>
     <message>
@@ -1158,8 +1146,8 @@ End: %2</source>
         <translation>批量复制选中项目的分享链接 (Nekoray)</translation>
     </message>
     <message>
-        <source>Allow connections from the LAN</source>
-        <translation>允许来自局域网的连接</translation>
+        <source>Allow other devices to connect</source>
+        <translation>允许其他设备连接</translation>
     </message>
     <message>
         <source>Manual addition of profiles is not allowed in subscription groupings.</source>
@@ -1188,6 +1176,14 @@ End: %2</source>
     <message>
         <source>Restart Program</source>
         <translation>重启程序</translation>
+    </message>
+    <message>
+        <source>Not Running</source>
+        <translation>未启动</translation>
+    </message>
+    <message>
+        <source>Current server is incompatible with VPN. Please stop the server first, enable VPN mode, and then restart.</source>
+        <translation>当前服务器与 VPN 不兼容。请先停止服务器，打开 VPN 模式后再启动。</translation>
     </message>
 </context>
 <context>

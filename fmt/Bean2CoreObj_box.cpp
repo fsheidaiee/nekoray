@@ -6,9 +6,7 @@ namespace NekoRay::fmt {
         // https://sing-box.sagernet.org/configuration/shared/v2ray-transport
 
         if (network != "tcp") {
-            QJsonObject transport{
-                    {"type", network.replace("h2", "http")},
-            };
+            QJsonObject transport{{"type", network},};
             if (network == "ws") {
                 if (!path.isEmpty()) transport["path"] = path;
                 if (!host.isEmpty()) transport["headers"] = QJsonObject{{"Host", host}};
@@ -35,6 +33,12 @@ namespace NekoRay::fmt {
             }
             if (!alpn.trimmed().isEmpty()) {
                 tls["alpn"] = QList2QJsonArray(alpn.split(","));
+            }
+            if (!utls.isEmpty()) {
+                tls["utls"] = QJsonObject{
+                        {"enabled",     true},
+                        {"fingerprint", utls},
+                };
             }
             outbound->insert("tls", tls);
         }

@@ -100,7 +100,6 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         ui->connection_statistics_box->setDisabled(true);
     }
     //
-    D_LOAD_BOOL(start_minimal)
     D_LOAD_BOOL(check_include_pre)
     D_LOAD_BOOL(connection_statistics)
     //
@@ -154,7 +153,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     //
     CACHE.extraCore = QString2QJsonObject(NekoRay::dataStore->extraCore->core_map);
     if (!CACHE.extraCore.contains("naive")) CACHE.extraCore.insert("naive", "");
-    if (!CACHE.extraCore.contains("hysteria")) CACHE.extraCore.insert("hysteria", "");
+    if (!CACHE.extraCore.contains("hysteria") && !IS_NEKO_BOX) CACHE.extraCore.insert("hysteria", "");
     //
     auto extra_core_layout = ui->extra_core_box->layout();
     for (const auto &s: CACHE.extraCore.keys()) {
@@ -220,7 +219,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
             file.open(QIODevice::ReadWrite | QIODevice::Truncate);
             file.write(Int2String(neko_core_new).toUtf8());
             file.close();
-            dialog_message("", "RestartProgram");
+            MW_dialog_message("", "RestartProgram");
         }
     };
     connect(ui->switch_core_v2ray, &QRadioButton::clicked, this, switch_core_on_click);
@@ -253,7 +252,6 @@ void DialogBasicSettings::accept() {
     // Style
 
     NekoRay::dataStore->language = ui->language->currentIndex();
-    D_SAVE_BOOL(start_minimal)
     D_SAVE_BOOL(connection_statistics)
     D_SAVE_BOOL(check_include_pre)
 
@@ -281,7 +279,7 @@ void DialogBasicSettings::accept() {
     D_SAVE_BOOL(insecure_hint)
     D_SAVE_BOOL(skip_cert)
 
-    dialog_message(Dialog_DialogBasicSettings, "UpdateDataStore");
+    MW_dialog_message(Dialog_DialogBasicSettings, "UpdateDataStore");
     QDialog::accept();
 }
 
@@ -304,5 +302,5 @@ void DialogBasicSettings::on_set_custom_icon_clicked() {
     } else {
         return;
     }
-    dialog_message(Dialog_DialogBasicSettings, "UpdateIcon");
+    MW_dialog_message(Dialog_DialogBasicSettings, "UpdateIcon");
 }
