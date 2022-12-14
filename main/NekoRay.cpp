@@ -4,6 +4,10 @@
 #include <QDir>
 #include <QApplication>
 #include <QFileInfo>
+#include <QSharedPointer>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonDocument>
 
 namespace NekoRay {
 
@@ -46,6 +50,7 @@ namespace NekoRay {
         _add(new configItem("hk_mw", &hotkey_mainwindow, itemType::string));
         _add(new configItem("hk_group", &hotkey_group, itemType::string));
         _add(new configItem("hk_route", &hotkey_route, itemType::string));
+        _add(new configItem("hk_spmenu", &hotkey_system_proxy_menu, itemType::string));
         _add(new configItem("fakedns", &fake_dns, itemType::boolean));
         _add(new configItem("active_routing", &active_routing, itemType::string));
         _add(new configItem("mw_size", &mw_size, itemType::string));
@@ -60,6 +65,9 @@ namespace NekoRay {
         _add(new configItem("check_include_pre", &check_include_pre, itemType::boolean));
         _add(new configItem("sp_format", &system_proxy_format, itemType::string));
         _add(new configItem("sub_clear", &sub_clear, itemType::boolean));
+        _add(new configItem("sub_insecure", &sub_insecure, itemType::boolean));
+        _add(new configItem("enable_js_hook", &enable_js_hook, itemType::integer));
+        _add(new configItem("log_ignore", &log_ignore, itemType::stringList));
     }
 
     void DataStore::UpdateStartedId(int id) {
@@ -76,18 +84,20 @@ namespace NekoRay {
     // preset routing
     Routing::Routing(int preset) : JsonStore() {
         if (preset == 1) {
-            direct_ip = "geoip:cn\n"
-                        "geoip:private";
+            direct_ip =
+                "geoip:cn\n"
+                "geoip:private";
             direct_domain = "geosite:cn";
             proxy_ip = "";
             proxy_domain = "";
             block_ip = "";
-            block_domain = "geosite:category-ads-all\n"
-                           "domain:appcenter.ms\n"
-                           "domain:app-measurement.com\n"
-                           "domain:firebase.io\n"
-                           "domain:crashlytics.com\n"
-                           "domain:google-analytics.com";
+            block_domain =
+                "geosite:category-ads-all\n"
+                "domain:appcenter.ms\n"
+                "domain:app-measurement.com\n"
+                "domain:firebase.io\n"
+                "domain:crashlytics.com\n"
+                "domain:google-analytics.com";
         }
         _add(new configItem("direct_ip", &this->direct_ip, itemType::string));
         _add(new configItem("direct_domain", &this->direct_domain, itemType::string));
@@ -100,12 +110,12 @@ namespace NekoRay {
 
     QString Routing::toString() const {
         return QString("[Proxy] %1\n[Proxy] %2\n[Direct] %3\n[Direct] %4\n[Block] %5\n[Block] %6")
-                .arg(SplitLines(proxy_domain).join(","))
-                .arg(SplitLines(proxy_ip).join(","))
-                .arg(SplitLines(direct_domain).join(","))
-                .arg(SplitLines(direct_ip).join(","))
-                .arg(SplitLines(block_domain).join(","))
-                .arg(SplitLines(block_ip).join(","));
+            .arg(SplitLines(proxy_domain).join(","))
+            .arg(SplitLines(proxy_ip).join(","))
+            .arg(SplitLines(direct_domain).join(","))
+            .arg(SplitLines(direct_ip).join(","))
+            .arg(SplitLines(block_domain).join(","))
+            .arg(SplitLines(block_ip).join(","));
     }
 
     QStringList Routing::List() {
@@ -224,49 +234,42 @@ namespace NekoRay {
             switch (item->type) {
                 case itemType::string:
                     if (value.type() != QJsonValue::String) {
-                        MessageBoxWarning("错误", "Not a string\n" + key);
                         continue;
                     }
                     *(QString *) item->ptr = value.toString();
                     break;
                 case itemType::integer:
                     if (value.type() != QJsonValue::Double) {
-                        MessageBoxWarning("错误", "Not a int\n" + key);
                         continue;
                     }
                     *(int *) item->ptr = value.toInt();
                     break;
                 case itemType::integer64:
                     if (value.type() != QJsonValue::Double) {
-                        MessageBoxWarning("错误", "Not a int64\n" + key);
                         continue;
                     }
                     *(long long *) item->ptr = value.toDouble();
                     break;
                 case itemType::boolean:
                     if (value.type() != QJsonValue::Bool) {
-                        MessageBoxWarning("错误", "Not a bool\n" + key);
                         continue;
                     }
                     *(bool *) item->ptr = value.toBool();
                     break;
                 case itemType::stringList:
                     if (value.type() != QJsonValue::Array) {
-                        MessageBoxWarning("错误", "Not a Array\n" + key);
                         continue;
                     }
                     *(QList<QString> *) item->ptr = QJsonArray2QListString(value.toArray());
                     break;
                 case itemType::integerList:
                     if (value.type() != QJsonValue::Array) {
-                        MessageBoxWarning("错误", "Not a Array\n" + key);
                         continue;
                     }
                     *(QList<int> *) item->ptr = QJsonArray2QListInt(value.toArray());
                     break;
                 case itemType::jsonStore:
                     if (value.type() != QJsonValue::Object) {
-                        MessageBoxWarning("错误", "Not a json object\n" + key);
                         continue;
                     }
                     if (load_control_no_jsonStore)
@@ -353,4 +356,4 @@ namespace NekoRay {
         return {};
     }
 
-}
+} // namespace NekoRay

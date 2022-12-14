@@ -4,13 +4,14 @@
 #include "db/ProfileFilter.hpp"
 #include "fmt/includes.h"
 #include "fmt/Preset.hpp"
+#include "main/QJS.hpp"
 
 #include "GroupUpdater.hpp"
 
 #include <QInputDialog>
 #include <QUrlQuery>
 
-#ifndef NKR_NO_EXTERNAL
+#ifndef NKR_NO_YAML
 
 #include <yaml-cpp/yaml.h>
 
@@ -33,15 +34,14 @@ namespace NekoRay::sub {
             stream->security = "tls";
         }
         // 2. TLS SNI: v2rayN config builder generate sni like this, so set sni here for their format.
-        if (stream->security == "tls" && IsIpAddress(ent->bean->serverAddress)
-            && (!stream->host.isEmpty()) && stream->sni.isEmpty()) {
-            stream->sni = stream->host;;
+        if (stream->security == "tls" && IsIpAddress(ent->bean->serverAddress) && (!stream->host.isEmpty()) && stream->sni.isEmpty()) {
+            stream->sni = stream->host;
         }
     }
 
     void RawUpdater::update(const QString &str) {
         // Base64 encoded subscription
-        if (auto str2 = DecodeB64IfValid(str);!str2.isEmpty()) {
+        if (auto str2 = DecodeB64IfValid(str); !str2.isEmpty()) {
             update(str2);
             return;
         }
@@ -165,7 +165,7 @@ namespace NekoRay::sub {
         update_counter++;
     }
 
-#ifndef NKR_NO_EXTERNAL
+#ifndef NKR_NO_YAML
 
     QString Node2QString(const YAML::Node &n, const QString &def = "") {
         try {
@@ -202,9 +202,9 @@ namespace NekoRay::sub {
 
 #endif
 
-// https://github.com/Dreamacro/clash/wiki/configuration
+    // https://github.com/Dreamacro/clash/wiki/configuration
     void RawUpdater::updateClash(const QString &str) {
-#ifndef NKR_NO_EXTERNAL
+#ifndef NKR_NO_YAML
         try {
             auto proxies = YAML::Load(str.toStdString())["proxies"];
             for (auto proxy: proxies) {
@@ -228,10 +228,26 @@ namespace NekoRay::sub {
                     auto plugin_n = proxy["plugin"];
                     auto pluginOpts_n = proxy["plugin-opts"];
                     if (plugin_n.IsDefined() && pluginOpts_n.IsDefined()) {
-                        if (Node2QString(plugin_n) == "obfs") {
-                            bean->plugin = "obfs-local;obfs=" + Node2QString(pluginOpts_n["mode"]) + ";obfs-host=" +
-                                           Node2QString(pluginOpts_n["host"]);
+                        QStringList ssPlugin;
+                        auto plugin = Node2QString(plugin_n);
+                        if (plugin == "obfs") {
+                            ssPlugin << "obfs-local";
+                            ssPlugin << "obfs=" + Node2QString(pluginOpts_n["mode"]);
+                            ssPlugin << "obfs-host=" + Node2QString(pluginOpts_n["host"]);
+                        } else if (plugin == "v2ray-plugin") {
+                            auto mode = Node2QString(pluginOpts_n["mode"]);
+                            auto host = Node2QString(pluginOpts_n["host"]);
+                            auto path = Node2QString(pluginOpts_n["path"]);
+                            ssPlugin << "v2ray-plugin";
+                            if (!mode.isEmpty() && mode != "websocket") ssPlugin << "mode=" + mode;
+                            if (Node2Bool(pluginOpts_n["tls"])) ssPlugin << "tls";
+                            if (!host.isEmpty()) ssPlugin << "host=" + host;
+                            if (!path.isEmpty()) ssPlugin << "path=" + path;
+                            // clash only: skip-cert-verify
+                            // clash only: headers
+                            // clash: mux=?
                         }
+                        bean->plugin = ssPlugin.join(";");
                     }
                     auto protocol_n = proxy["protocol"];
                     if (protocol_n.IsDefined()) {
@@ -251,6 +267,23 @@ namespace NekoRay::sub {
                     bean->stream->network = Node2QString(proxy["network"], "tcp");
                     bean->stream->sni = FIRST_OR_SECOND(Node2QString(proxy["sni"]), Node2QString(proxy["servername"]));
                     if (Node2Bool(proxy["skip-cert-verify"])) bean->stream->allow_insecure = true;
+
+                    // opts
+                    auto ws = NodeChild(proxy, {"ws-opts", "ws-opt"});
+                    if (ws.IsMap()) {
+                        auto headers = ws["headers"];
+                        for (auto header: headers) {
+                            if (Node2QString(header.first).toLower() == "host") {
+                                bean->stream->host = Node2QString(header.second);
+                            }
+                        }
+                        bean->stream->path = Node2QString(ws["path"]);
+                    }
+
+                    auto grpc = NodeChild(proxy, {"grpc-opts", "grpc-opt"});
+                    if (grpc.IsMap()) {
+                        bean->stream->path = Node2QString(grpc["grpc-service-name"]);
+                    }
                 } else if (type == "vmess") {
                     needFix = true;
                     auto bean = ent->VMessBean();
@@ -262,6 +295,7 @@ namespace NekoRay::sub {
                     if (Node2Bool(proxy["tls"])) bean->stream->security = "tls";
                     if (Node2Bool(proxy["skip-cert-verify"])) bean->stream->allow_insecure = true;
 
+                    // opts
                     auto ws = NodeChild(proxy, {"ws-opts", "ws-opt"});
                     if (ws.IsMap()) {
                         auto headers = ws["headers"];
@@ -364,8 +398,7 @@ namespace NekoRay::sub {
 
             auto resp = NetworkRequestHelper::HttpGet(content);
             if (!resp.error.isEmpty()) {
-                MW_show_log("<<<<<<<< " + QObject::tr("Requesting subscription %1 error: %2")
-                        .arg(groupName, resp.error + "\n" + resp.data));
+                MW_show_log("<<<<<<<< " + QObject::tr("Requesting subscription %1 error: %2").arg(groupName, resp.error + "\n" + resp.data));
                 return;
             }
 
@@ -373,11 +406,11 @@ namespace NekoRay::sub {
             sub_user_info = NetworkRequestHelper::GetHeader(resp.header, "Subscription-UserInfo");
         }
 
-        QList<QSharedPointer<ProxyEntity>> in; // 更新前
-        QList<QSharedPointer<ProxyEntity>> out_all; // 更新前 + 更新后
-        QList<QSharedPointer<ProxyEntity>> out; // 更新后
-        QList<QSharedPointer<ProxyEntity>> only_in; // 只在更新前有的
-        QList<QSharedPointer<ProxyEntity>> only_out; // 只在更新后有的
+        QList<QSharedPointer<ProxyEntity>> in;         // 更新前
+        QList<QSharedPointer<ProxyEntity>> out_all;    // 更新前 + 更新后
+        QList<QSharedPointer<ProxyEntity>> out;        // 更新后
+        QList<QSharedPointer<ProxyEntity>> only_in;    // 只在更新前有的
+        QList<QSharedPointer<ProxyEntity>> only_out;   // 只在更新后有的
         QList<QSharedPointer<ProxyEntity>> update_del; // 更新前后都有的，删除更新后多余的
 
         // 订阅解析前
@@ -393,6 +426,17 @@ namespace NekoRay::sub {
                 for (const auto &profile: in) {
                     profileManager->DeleteProfile(profile->id);
                 }
+            }
+        }
+
+        // hook.js
+        auto source = qjs::ReadHookJS();
+        if (!source.isEmpty()) {
+            qjs::QJS js(source);
+            auto js_result = js.EvalFunction("hook.hook_import", content);
+            if (content != js_result) {
+                MW_show_log("hook.js modified your import content.");
+                content = js_result;
             }
         }
 
@@ -423,8 +467,10 @@ namespace NekoRay::sub {
             }
 
             auto change = "\n" + QObject::tr("Added %1 profiles:\n%2\nDeleted %3 Profiles:\n%4")
-                    .arg(only_out.length()).arg(notice_added)
-                    .arg(only_in.length()).arg(notice_deleted);
+                                     .arg(only_out.length())
+                                     .arg(notice_added)
+                                     .arg(only_in.length())
+                                     .arg(notice_deleted);
             if (only_out.length() + only_in.length() == 0) change = QObject::tr("Nothing");
             MW_show_log("<<<<<<<< " + QObject::tr("Change of %1:").arg(group->name) + " " + change);
             MW_dialog_message("SubUpdater", "finish-dingyue");
@@ -433,4 +479,4 @@ namespace NekoRay::sub {
             MW_dialog_message("SubUpdater", "finish");
         }
     }
-}
+} // namespace NekoRay::sub

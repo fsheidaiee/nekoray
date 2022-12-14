@@ -1,9 +1,8 @@
 #include "includes.h"
 
-#include <functional>
-
 #include <QApplication>
 #include <QHostInfo>
+#include <QUrl>
 
 namespace NekoRay::fmt {
     AbstractBean::AbstractBean(int version) {
@@ -20,7 +19,8 @@ namespace NekoRay::fmt {
         url.setScheme("nekoray");
         url.setHost(type);
         url.setFragment(QJsonObject2QString(b, true)
-                                .toUtf8().toBase64(QByteArray::Base64UrlEncoding));
+                            .toUtf8()
+                            .toBase64(QByteArray::Base64UrlEncoding));
         return url.toString();
     }
 
@@ -72,4 +72,4 @@ namespace NekoRay::fmt {
             onFinished();
         });
     }
-}
+} // namespace NekoRay::fmt

@@ -16,7 +16,6 @@ if (WIN32)
 endif ()
 
 # Find Qt
-
 if (NOT QT_VERSION_MAJOR)
     set(QT_VERSION_MAJOR 5)
 endif ()
@@ -30,59 +29,94 @@ if (NKR_CROSS)
     set_property(TARGET Qt5::lupdate PROPERTY IMPORTED_LOCATION /usr/bin/lupdate)
 endif ()
 
-if (NKR_PACKAGE OR NKR_PACKAGE_MACOS)
-    message("[add_compile_definitions] NKR_CPP_USE_APPDATA")
-    add_compile_definitions(NKR_CPP_USE_APPDATA)
-endif ()
-
 # Windows
 include("cmake/fuck_windows/fuck.cmake")
 
-# default prefix path
+#### default prefix path ####
+
 if (NKR_PACKAGE)
-    list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/libs/deps/package)
+    list(APPEND NKR_LIBS ${CMAKE_SOURCE_DIR}/libs/deps/package)
 else ()
-    list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/libs/deps/built)
+    list(APPEND NKR_LIBS ${CMAKE_SOURCE_DIR}/libs/deps/built)
 endif ()
+
+if (NKR_DISABLE_LIBS)
+else ()
+    list(APPEND CMAKE_PREFIX_PATH ${NKR_LIBS})
+endif ()
+
 message("[CMAKE_PREFIX_PATH] ${CMAKE_PREFIX_PATH}")
 
 # for some cross toolchain
 list(APPEND CMAKE_FIND_ROOT_PATH ${CMAKE_PREFIX_PATH})
 message("[CMAKE_FIND_ROOT_PATH] ${CMAKE_FIND_ROOT_PATH}")
 
-# NKR
+#### NKR ####
+
 include("cmake/print.cmake")
 include("cmake/nkr.cmake")
 
 find_package(Threads)
 
-if (NKR_NO_EXTERNAL)
-    add_compile_definitions(NKR_NO_EXTERNAL)
-else ()
-    if (NKR_NO_GRPC)
-        add_compile_definitions(NKR_NO_GRPC)
-    else ()
-        # My proto
-        include("cmake/myproto.cmake")
-        list(APPEND NKR_EXTERNAL_TARGETS myproto)
-    endif ()
+if (NKR_PACKAGE OR NKR_PACKAGE_MACOS)
+    nkr_add_compile_definitions(NKR_CPP_USE_APPDATA)
+endif ()
 
-    # yaml-cpp (static)
+#### NKR EXTERNAL ####
+
+if (NKR_NO_EXTERNAL)
+    set(NKR_NO_GRPC 1)
+    set(NKR_NO_YAML 1)
+    set(NKR_NO_ZXING 1)
+    set(NKR_NO_QHOTKEY 1)
+    set(NKR_NO_QUICKJS 1)
+endif ()
+
+# quickjs (static submodule)
+if (NKR_NO_QUICKJS)
+    nkr_add_compile_definitions(NKR_NO_QUICKJS)
+else ()
+    add_subdirectory(3rdparty/qjs)
+    list(APPEND NKR_EXTERNAL_TARGETS quickjs)
+endif ()
+
+# grpc
+if (NKR_NO_GRPC)
+    nkr_add_compile_definitions(NKR_NO_GRPC)
+else ()
+    # My proto
+    include("cmake/myproto.cmake")
+    list(APPEND NKR_EXTERNAL_TARGETS myproto)
+endif ()
+
+# yaml-cpp
+if (NKR_NO_YAML)
+    nkr_add_compile_definitions(NKR_NO_YAML)
+else ()
     find_package(yaml-cpp CONFIG REQUIRED) # only Release is built
     list(APPEND NKR_EXTERNAL_TARGETS yaml-cpp)
+endif ()
 
-    # zxing-cpp
+# zxing-cpp
+if (NKR_NO_ZXING)
+    nkr_add_compile_definitions(NKR_NO_ZXING)
+else ()
     find_package(ZXing CONFIG REQUIRED)
     list(APPEND NKR_EXTERNAL_TARGETS ZXing::ZXing)
+endif ()
 
-    # QHotkey (static submodule)
+# QHotkey (static submodule)
+if (NKR_NO_QHOTKEY)
+    nkr_add_compile_definitions(NKR_NO_QHOTKEY)
+else ()
     set(QHOTKEY_INSTALL OFF)
     set(BUILD_SHARED_LIBS OFF)
     add_subdirectory(3rdparty/QHotkey)
     list(APPEND NKR_EXTERNAL_TARGETS qhotkey)
 endif ()
 
-# debug print
+#### debug print ####
+
 if (DBG_CMAKE)
     print_all_variables()
     print_target_properties(myproto)
@@ -99,7 +133,9 @@ set(PROJECT_SOURCES
         main/main.cpp
         main/NekoRay.cpp
         main/NekoRay_Utils.cpp
+        main/QJS.cpp
 
+        3rdparty/base64.cpp
         3rdparty/qrcodegen.cpp
         3rdparty/QtExtKeySequenceEdit.cpp
 
@@ -207,14 +243,6 @@ set(PROJECT_SOURCES
         ${QV2RAY_RC}
         )
 
-# Translations
-set(TS_FILES
-        translations/zh_CN.ts
-        )
-qt_create_translation(QM_FILES ${PROJECT_SOURCES} ${TS_FILES} OPTIONS -locations none)
-configure_file(translations/translations.qrc ${CMAKE_BINARY_DIR} COPYONLY)
-set(PROJECT_SOURCES ${PROJECT_SOURCES} ${TS_FILES} ${QM_FILES} ${CMAKE_BINARY_DIR}/translations.qrc)
-
 # Qt exe
 if (${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(nekoray
@@ -245,21 +273,12 @@ set_property(TARGET nekoray PROPERTY AUTOUIC ON)
 set_property(TARGET nekoray PROPERTY AUTOMOC ON)
 set_property(TARGET nekoray PROPERTY AUTORCC ON)
 
-# Target Link
-
-target_link_libraries(nekoray PRIVATE
-        Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Svg
-        Threads::Threads
-        ${NKR_EXTERNAL_TARGETS}
-        ${PLATFORM_FUCKING_LIBRARIES}
-        )
+# Target Source macOS
 
 set(MACOSX_ICON ${CMAKE_SOURCE_DIR}/res/nekoray.icns)
-
 if (APPLE)
     target_sources(nekoray PRIVATE ${MACOSX_ICON})
 endif ()
-
 set_target_properties(nekoray PROPERTIES
         MACOSX_BUNDLE_ICON_FILE "nekoray.icns"
         RESOURCE ${MACOSX_ICON}
@@ -267,6 +286,29 @@ set_target_properties(nekoray PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER moe.nekoray.macosx
         MACOSX_BUNDLE TRUE
         WIN32_EXECUTABLE TRUE
+        )
+
+# Target Source Translations
+
+set(TS_FILES
+        translations/zh_CN.ts
+        )
+if (${QT_VERSION_MAJOR} GREATER_EQUAL 6)
+    qt_add_lupdate(nekoray TS_FILES ${TS_FILES})
+    qt_add_lrelease(nekoray TS_FILES ${TS_FILES} QM_FILES_OUTPUT_VARIABLE QM_FILES)
+else ()
+    qt5_create_translation(QM_FILES ${PROJECT_SOURCES} ${TS_FILES} OPTIONS -locations none)
+endif ()
+configure_file(translations/translations.qrc ${CMAKE_BINARY_DIR} COPYONLY)
+target_sources(nekoray PRIVATE ${CMAKE_BINARY_DIR}/translations.qrc)
+
+# Target Link
+
+target_link_libraries(nekoray PRIVATE
+        Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Svg
+        Threads::Threads
+        ${NKR_EXTERNAL_TARGETS}
+        ${PLATFORM_FUCKING_LIBRARIES}
         )
 
 if (QT_VERSION_MAJOR EQUAL 6)

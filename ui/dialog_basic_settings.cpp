@@ -22,7 +22,7 @@ public:
 
     explicit ExtraCoreWidget(QJsonObject *extraCore, const QString &coreName_,
                              QWidget *parent = nullptr)
-            : QWidget(parent) {
+        : QWidget(parent) {
         coreName = coreName_;
         label_name = new QLabel;
         label_name->setText(coreName);
@@ -51,7 +51,7 @@ public:
 };
 
 DialogBasicSettings::DialogBasicSettings(QWidget *parent)
-        : QDialog(parent), ui(new Ui::DialogBasicSettings) {
+    : QDialog(parent), ui(new Ui::DialogBasicSettings) {
     ui->setupUi(this);
 
     // Common
@@ -85,10 +85,8 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         auto str = QInputDialog::getItem(this, ui->sys_proxy_format->text() + " (Windows)",
                                          tr("Advanced system proxy settings. Please select a format."),
                                          Preset::Windows::system_proxy_format,
-                                         Preset::Windows::system_proxy_format.indexOf(
-                                                 NekoRay::dataStore->system_proxy_format),
-                                         false, &ok
-        );
+                                         Preset::Windows::system_proxy_format.indexOf(NekoRay::dataStore->system_proxy_format),
+                                         false, &ok);
         if (ok) NekoRay::dataStore->system_proxy_format = str;
     });
 #else
@@ -145,6 +143,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     ui->user_agent->setText(NekoRay::dataStore->user_agent);
     D_LOAD_BOOL(sub_use_proxy)
     D_LOAD_BOOL(sub_clear)
+    D_LOAD_BOOL(sub_insecure)
 
     // Core
 
@@ -174,7 +173,8 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         bool ok;
         auto s = QInputDialog::getText(nullptr, tr("Add"),
                                        tr("Please input the core name."),
-                                       QLineEdit::Normal, "", &ok).trimmed();
+                                       QLineEdit::Normal, "", &ok)
+                     .trimmed();
         if (s.isEmpty() || !ok) return;
         if (CACHE.extraCore.contains(s)) return;
         extra_core_layout->addWidget(new ExtraCoreWidget(&CACHE.extraCore, s));
@@ -212,8 +212,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         QString core_name_new = dynamic_cast<QRadioButton *>(sender())->text();
         if (QMessageBox::question(this, tr("Confirmation"),
                                   tr("Switching the core to %1, click \"Yes\" to complete the switch and the program will restart. This feature may be unstable, please do not switch frequently.")
-                                          .arg(core_name_new)
-        ) == QMessageBox::StandardButton::Yes) {
+                                      .arg(core_name_new)) == QMessageBox::StandardButton::Yes) {
             QFile file;
             file.setFileName("groups/coreType");
             file.open(QIODevice::ReadWrite | QIODevice::Truncate);
@@ -229,6 +228,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
 
     D_LOAD_BOOL(insecure_hint)
     D_LOAD_BOOL(skip_cert)
+    ui->enable_js_hook->setCurrentIndex(NekoRay::dataStore->enable_js_hook);
 }
 
 DialogBasicSettings::~DialogBasicSettings() {
@@ -268,6 +268,7 @@ void DialogBasicSettings::accept() {
     NekoRay::dataStore->user_agent = ui->user_agent->text();
     D_SAVE_BOOL(sub_use_proxy)
     D_SAVE_BOOL(sub_clear)
+    D_SAVE_BOOL(sub_insecure)
 
     // Core
 
@@ -278,6 +279,7 @@ void DialogBasicSettings::accept() {
 
     D_SAVE_BOOL(insecure_hint)
     D_SAVE_BOOL(skip_cert)
+    NekoRay::dataStore->enable_js_hook = ui->enable_js_hook->currentIndex();
 
     MW_dialog_message(Dialog_DialogBasicSettings, "UpdateDataStore");
     QDialog::accept();

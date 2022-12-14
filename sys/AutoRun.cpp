@@ -27,8 +27,7 @@ void AutoRun_SetEnabled(bool enable) {
     QFileInfo fInfo(appPath);
     QString name = fInfo.baseName();
 
-    QSettings settings("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
-                       QSettings::NativeFormat);
+    QSettings settings("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
 
     if (enable) {
         settings.setValue(name, Windows_GenAutoRunString());
@@ -38,8 +37,7 @@ void AutoRun_SetEnabled(bool enable) {
 }
 
 bool AutoRun_IsEnabled() {
-    QSettings settings("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
-                       QSettings::NativeFormat);
+    QSettings settings("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
 
     //以程序名称作为注册表中的键
     //根据键获取对应的值（程序路径）
@@ -49,7 +47,6 @@ bool AutoRun_IsEnabled() {
 
     return settings.value(name).toString() == Windows_GenAutoRunString();
 }
-
 
 #endif
 
@@ -66,7 +63,7 @@ void AutoRun_SetEnabled(bool enable) {
     if (loginItems && enable) {
         // Insert an item to the list.
         LSSharedFileListItemRef item =
-                LSSharedFileListInsertItemURL(loginItems, kLSSharedFileListItemLast, 0, 0, urlRef, 0, 0);
+            LSSharedFileListInsertItemURL(loginItems, kLSSharedFileListItemLast, 0, 0, urlRef, 0, 0);
 
         if (item) CFRelease(item);
 
@@ -170,9 +167,8 @@ void AutoRun_SetEnabled(bool enable) {
     QStringList appCmdList = {QApplication::applicationFilePath(), "-tray"};
 
     // nekoray: launcher
-    auto launcherPath = QApplication::applicationDirPath() + "/launcher";
-    if (QFile::exists(launcherPath)) {
-        appCmdList = QStringList{launcherPath, "--", "-tray"};
+    if (qEnvironmentVariable("NKR_FROM_LAUNCHER") == "1") {
+        appCmdList = QStringList{QApplication::applicationDirPath() + "/launcher", "--", "-tray"};
     }
 
     if (enable) {
@@ -194,13 +190,13 @@ void AutoRun_SetEnabled(bool enable) {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         ts.setCodec("UTF-8");
 #endif
-        ts << QLatin1String("[Desktop Entry]") << NEWLINE                                 //
-           << QLatin1String("Name=") << appName << NEWLINE                                //
-           << QLatin1String("Exec=") << appCmdList.join(" ") << NEWLINE                   //
-           << QLatin1String("Terminal=") << "false" << NEWLINE                            //
-           << QLatin1String("Categories=") << "Network" << NEWLINE                        //
-           << QLatin1String("Type=") << "Application" << NEWLINE                          //
-           << QLatin1String("StartupNotify=") << "false" << NEWLINE                       //
+        ts << QLatin1String("[Desktop Entry]") << NEWLINE
+           << QLatin1String("Name=") << appName << NEWLINE
+           << QLatin1String("Exec=") << appCmdList.join(" ") << NEWLINE
+           << QLatin1String("Terminal=") << "false" << NEWLINE
+           << QLatin1String("Categories=") << "Network" << NEWLINE
+           << QLatin1String("Type=") << "Application" << NEWLINE
+           << QLatin1String("StartupNotify=") << "false" << NEWLINE
            << QLatin1String("X-GNOME-Autostart-enabled=") << "true" << NEWLINE;
         ts.flush();
         iniFile.close();

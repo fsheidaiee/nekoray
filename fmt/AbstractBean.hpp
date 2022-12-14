@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QJsonObject>
+#include <QJsonArray>
+
 #include "main/NekoRay.hpp"
 
 namespace NekoRay::fmt {
@@ -60,7 +63,6 @@ namespace NekoRay::fmt {
         virtual QString InsecureHint() { return {}; };
 
         QString DisplayInsecureHint();
-
     };
 
-}
+} // namespace NekoRay::fmt

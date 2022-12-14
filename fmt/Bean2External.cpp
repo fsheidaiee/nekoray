@@ -1,24 +1,23 @@
 #include "db/ProxyEntity.hpp"
 #include "fmt/includes.h"
-#include "NaiveBean.hpp"
-
 
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
+#include <QUrl>
 
-#define WriteTempFile(fn, data) \
-QDir dir; \
-if (!dir.exists("temp")) dir.mkdir("temp"); \
-QFile f(QString("temp/") + fn); \
-bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate); \
-if (ok) { \
-f.write(data); \
-} else { \
-result.error = f.errorString(); \
-} \
-f.close(); \
-auto TempFile = QFileInfo(f).absoluteFilePath();
+#define WriteTempFile(fn, data)                                   \
+    QDir dir;                                                     \
+    if (!dir.exists("temp")) dir.mkdir("temp");                   \
+    QFile f(QString("temp/") + fn);                               \
+    bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate); \
+    if (ok) {                                                     \
+        f.write(data);                                            \
+    } else {                                                      \
+        result.error = f.errorString();                           \
+    }                                                             \
+    f.close();                                                    \
+    auto TempFile = QFileInfo(f).absoluteFilePath();
 
 namespace NekoRay::fmt {
     // 0: no external
@@ -53,10 +52,16 @@ namespace NekoRay::fmt {
         domain_address = WrapIPV6Host(domain_address);
         connect_address = WrapIPV6Host(connect_address);
 
+        auto proxy_url = QUrl();
+        proxy_url.setScheme(protocol);
+        proxy_url.setUserName(username);
+        proxy_url.setPassword(password);
+        proxy_url.setPort(connect_port);
+        proxy_url.setHost(domain_address);
+
         result.arguments += "--log";
         result.arguments += "--listen=socks://127.0.0.1:" + Int2String(socks_port);
-        result.arguments += "--proxy=" + protocol + "://" + username + ":" + password + "@" +
-                            domain_address + ":" + Int2String(connect_port);
+        result.arguments += "--proxy=" + proxy_url.toString(QUrl::FullyEncoded);
         if (domain_address != connect_address)
             result.arguments += "--host-resolver-rules=MAP " + domain_address + " " + connect_address;
         if (insecure_concurrency > 0) result.arguments += "--insecure-concurrency=" + Int2String(insecure_concurrency);
@@ -94,10 +99,15 @@ namespace NekoRay::fmt {
             auto config = config_simple;
             config = config.replace("%mapping_port%", Int2String(mapping_port));
             config = config.replace("%socks_port%", Int2String(socks_port));
+            config = config.replace("%server_addr%", serverAddress);
+            config = config.replace("%server_port%", Int2String(serverPort));
 
-            // trojan-go: unsupported config format: xxx.tmp. use .yaml or .json instead.
-            auto suffix = ".tmp";
-            if (!QString2QJsonObject(config).isEmpty()) {
+            // suffix
+            QString suffix;
+            if (!config_suffix.isEmpty()) {
+                suffix = "." + config_suffix;
+            } else if (!QString2QJsonObject(config).isEmpty()) {
+                // trojan-go: unsupported config format: xxx.tmp. use .yaml or .json instead.
                 suffix = ".json";
             }
 
@@ -120,4 +130,4 @@ namespace NekoRay::fmt {
 
         return result;
     }
-}
+} // namespace NekoRay::fmt

@@ -20,8 +20,7 @@
 #define LOAD_TYPE(a) ui->type->addItem(NekoRay::ProfileManager::NewProxyEntity(a)->bean->DisplayType(), a);
 
 DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId, QWidget *parent)
-        : QDialog(parent),
-          ui(new Ui::DialogEditProfile) {
+    : QDialog(parent), ui(new Ui::DialogEditProfile) {
     // setup UI
     ui->setupUi(this);
     ui->dialog_layout->setAlignment(ui->left, Qt::AlignTop);
@@ -244,7 +243,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     ui->name->setText(ent->bean->name);
     ui->address->setText(ent->bean->serverAddress);
     ui->port->setText(Int2String(ent->bean->serverPort));
-    ui->port->setValidator(QRegExpValidator_Number, this));
+    ui->port->setValidator(QRegExpValidator_Number);
 
     // 星号
     for (auto label: findChildren<QLabel *>()) {
@@ -335,16 +334,20 @@ void DialogEditProfile::accept() {
         *((QString *) custom_item->ptr) = CACHE.custom;
     }
 
+    // finish
+    QStringList msg = {"accept"};
+
     if (newEnt) {
         auto ok = NekoRay::profileManager->AddProfile(ent);
         if (!ok) {
             MessageBoxWarning("???", "id exists");
         }
     } else {
-        ent->Save();
+        auto changed = ent->Save();
+        if (changed && NekoRay::dataStore->started_id == ent->id) msg << "restart";
     }
 
-    MW_dialog_message(Dialog_DialogEditProfile, "accept");
+    MW_dialog_message(Dialog_DialogEditProfile, msg.join(","));
     QDialog::accept();
 }
 

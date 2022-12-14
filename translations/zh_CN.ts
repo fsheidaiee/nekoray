@@ -199,6 +199,14 @@
         <source>Clear servers before updating subscription</source>
         <translation>更新订阅前清除服务器</translation>
     </message>
+    <message>
+        <source>Ignore TLS errors when updating subscription</source>
+        <translation>更新订阅时忽略 TLS 错误</translation>
+    </message>
+    <message>
+        <source>Enable hook.js</source>
+        <translation>启用 hook.js 功能</translation>
+    </message>
 </context>
 <context>
     <name>DialogEditGroup</name>
@@ -247,8 +255,8 @@
         <translation>复制成功</translation>
     </message>
     <message>
-        <source>Copy profile share links (Nekoray)</source>
-        <translation>复制分组内配置的分享链接 (Nekoray)</translation>
+        <source>Copy profile share links (Neko Links)</source>
+        <translation>复制分组内配置的分享链接 (Neko Links)</translation>
     </message>
 </context>
 <context>
@@ -371,6 +379,10 @@
     <message>
         <source>Trigger main window</source>
         <translation>显示/隐藏主窗口</translation>
+    </message>
+    <message>
+        <source>System Proxy</source>
+        <translation>系统代理</translation>
     </message>
 </context>
 <context>
@@ -598,6 +610,10 @@
     <message>
         <source>Please read the documentation. If you don&apos;t understand, use a share link instead.</source>
         <translation>格式请看文档。如果不懂，直接导入 hysteria:// 链接。</translation>
+    </message>
+    <message>
+        <source>Config Suffix</source>
+        <translation>配置文件后缀</translation>
     </message>
 </context>
 <context>
@@ -1142,8 +1158,8 @@ End: %2</source>
         <translation>克隆 %1 个项目</translation>
     </message>
     <message>
-        <source>Copy links of selected (Nekoray)</source>
-        <translation>批量复制选中项目的分享链接 (Nekoray)</translation>
+        <source>Copy links of selected (Neko Links)</source>
+        <translation>批量复制选中项目的分享链接 (Neko Links)</translation>
     </message>
     <message>
         <source>Allow other devices to connect</source>
@@ -1184,6 +1200,32 @@ End: %2</source>
     <message>
         <source>Current server is incompatible with VPN. Please stop the server first, enable VPN mode, and then restart.</source>
         <translation>当前服务器与 VPN 不兼容。请先停止服务器，打开 VPN 模式后再启动。</translation>
+    </message>
+    <message>
+        <source>Open Config Folder</source>
+        <translation>打开配置目录</translation>
+    </message>
+    <message>
+        <source>Set ignore keyword</source>
+        <translation>设置忽略关键字</translation>
+    </message>
+    <message>
+        <source>Set the following keywords to ignore?
+Split by line.</source>
+        <translation>将以下关键字设置为忽略？
+一行一个。</translation>
+    </message>
+    <message>
+        <source>Save as route</source>
+        <translation>保存为路由规则</translation>
+    </message>
+    <message>
+        <source>Save &quot;%1&quot; as a routing rule?</source>
+        <translation>将&quot;%1&quot;保存为一条路由规则？</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>编辑</translation>
     </message>
 </context>
 <context>
@@ -1324,10 +1366,6 @@ As of January 1, 2022, compatibility with MD5 authentication information will be
     <message>
         <source>This profile is cleartext, don&apos;t use it if the server is not in your local network.</source>
         <translation>该配置为明文传输，如果服务器不在本地局域网，请不要使用。</translation>
-    </message>
-    <message>
-        <source>Another program is running.</source>
-        <translation>另一个 Nekoray 实例正在运行。</translation>
     </message>
     <message>
         <source>Select</source>

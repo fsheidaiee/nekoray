@@ -17,11 +17,21 @@ namespace NekoRay {
     }
 
     void ProfileManager::LoadManager() {
+        QList<int> invaild_profile_id;
         for (auto id: _profiles) {
-            profiles[id] = LoadProxyEntity(QString("profiles/%1.json").arg(id));
+            auto ent = LoadProxyEntity(QString("profiles/%1.json").arg(id));
+            if (ent == nullptr || ent->bean == nullptr || ent->bean->version == -114514) {
+                // clear invaild profile
+                invaild_profile_id << id;
+                continue;
+            }
+            profiles[id] = ent;
         }
         for (auto id: _groups) {
             groups[id] = LoadGroup(QString("groups/%1.json").arg(id));
+        }
+        for (auto id: invaild_profile_id) {
+            DeleteProfile(id);
         }
     }
 
@@ -49,13 +59,8 @@ namespace NekoRay {
             ent->load_control_force = true;
             ent->fn = jsonPath;
             ent->Load();
-            return ent;
-        } else {
-            // 返回一个假的？
-            ent = NewProxyEntity("socks");
-            ent->bean->name = "[Load Error]";
-            return ent;
         }
+        return ent;
     }
 
     //  新建的不给 fn 和 id
@@ -141,7 +146,11 @@ namespace NekoRay {
     // Profile
 
     int ProfileManager::NewProfileID() const {
-        if (profiles.empty()) { return 0; } else { return profiles.lastKey() + 1; }
+        if (profiles.empty()) {
+            return 0;
+        } else {
+            return profiles.lastKey() + 1;
+        }
     }
 
     bool ProfileManager::AddProfile(const QSharedPointer<ProxyEntity> &ent, int gid) {
@@ -192,7 +201,7 @@ namespace NekoRay {
         return nullptr;
     }
 
-    //Group
+    // Group
 
     Group::Group() {
         _add(new configItem("id", &id, itemType::integer));
@@ -212,7 +221,11 @@ namespace NekoRay {
     }
 
     int ProfileManager::NewGroupID() const {
-        if (groups.empty()) { return 0; } else { return groups.lastKey() + 1; }
+        if (groups.empty()) {
+            return 0;
+        } else {
+            return groups.lastKey() + 1;
+        }
     }
 
     bool ProfileManager::AddGroup(const QSharedPointer<Group> &ent) {
@@ -277,4 +290,4 @@ namespace NekoRay {
         }
     }
 
-}
+} // namespace NekoRay

@@ -47,6 +47,7 @@ namespace NekoRay {
         bool core_prepare_exit = false;
         int running_spmode = NekoRay::SystemProxyMode::DISABLE;
         bool need_keep_vpn_off = false;
+        QStringList ignoreConnTag = {};
 
         Routing *routing = new Routing;
         int imported_count = 0;
@@ -57,6 +58,7 @@ namespace NekoRay {
         bool flag_use_appdata = false;
         bool flag_many = false;
         bool flag_tray = false;
+        bool flag_debug = false;
 
         // Saved
 
@@ -66,7 +68,7 @@ namespace NekoRay {
         int test_concurrent = 5;
         int traffic_loop_interval = 500;
         bool connection_statistics = false;
-        int current_group = 0; //group id
+        int current_group = 0; // group id
         int mux_cool = -8;
         QString theme = "0";
         QString v2ray_asset_dir = "";
@@ -74,15 +76,18 @@ namespace NekoRay {
         QString mw_size = "";
         bool check_include_pre = false;
         QString system_proxy_format = "";
+        QStringList log_ignore = {};
 
         // Subscription
         QString user_agent = "Nekoray/1.0 (Prefer Clash Format)";
         bool sub_use_proxy = false;
         bool sub_clear = false;
+        bool sub_insecure = false;
 
         // Security
         bool insecure_hint = true;
         bool skip_cert = false;
+        int enable_js_hook = 0;
 
         // Remember
         int remember_spmode = NekoRay::SystemProxyMode::DISABLE;
@@ -123,6 +128,7 @@ namespace NekoRay {
         QString hotkey_mainwindow = "";
         QString hotkey_group = "";
         QString hotkey_route = "";
+        QString hotkey_system_proxy_menu = "";
 
         // Other Core
         ExtraCore *extraCore = new ExtraCore;
@@ -136,8 +142,8 @@ namespace NekoRay {
 
     inline int coreType = NekoRay::CoreType::V2RAY;
 
-}
+} // namespace NekoRay
 
 #define IS_NEKO_BOX (NekoRay::coreType == NekoRay::CoreType::SING_BOX)
-#define ROUTES_PREFIX_NAME QString( IS_NEKO_BOX ? "routes_box" : "routes" )
-#define ROUTES_PREFIX QString( ROUTES_PREFIX_NAME + "/" )
+#define ROUTES_PREFIX_NAME QString(IS_NEKO_BOX ? "routes_box" : "routes")
+#define ROUTES_PREFIX QString(ROUTES_PREFIX_NAME + "/")

@@ -1,9 +1,5 @@
 #pragma once
 
-#ifdef NKR_NO_EXTERNAL
-#define NKR_NO_GRPC
-#endif
-
 #ifndef NKR_NO_GRPC
 
 #include "go/gen/libcore.pb.h"
@@ -42,6 +38,5 @@ namespace NekoRay::rpc {
     };
 
     inline Client *defaultClient;
-}
+} // namespace NekoRay::rpc
 #endif
-

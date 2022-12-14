@@ -6,6 +6,7 @@
 
 #ifndef MW_INTERFACE
 
+#include <QTime>
 #include <QTableWidgetItem>
 #include <QKeyEvent>
 #include <QSystemTrayIcon>
@@ -20,7 +21,9 @@
 
 #endif
 
-namespace NekoRay::sys { class CoreProcess; }
+namespace NekoRay::sys {
+    class CoreProcess;
+}
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -29,7 +32,7 @@ namespace Ui {
 QT_END_NAMESPACE
 
 class MainWindow : public QMainWindow {
-Q_OBJECT
+    Q_OBJECT
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
@@ -154,6 +157,8 @@ private:
 
     void refresh_proxy_list_impl(const int &id = -1, NekoRay::GroupSortAction groupSortAction = {});
 
+    void refresh_proxy_list_impl_refresh_data(const int &id = -1);
+
     void keyPressEvent(QKeyEvent *event) override;
 
     void closeEvent(QCloseEvent *event) override;
@@ -165,7 +170,6 @@ private:
     bool StartVPNProcess();
 
     bool StopVPNProcess();
-
 
     // grpc and ...
 

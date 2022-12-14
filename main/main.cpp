@@ -7,6 +7,8 @@
 #include <QTranslator>
 #include <QMessageBox>
 #include <QStandardPaths>
+#include <QLocalSocket>
+#include <QLocalServer>
 
 #include "3rdparty/RunGuard.hpp"
 #include "main/NekoRay.hpp"
@@ -21,6 +23,8 @@ void signal_handler(int signum) {
         qApp->exit();
     }
 }
+
+#define LOCAL_SERVER_PREFIX "nekoraylocalserver-"
 
 int main(int argc, char *argv[]) {
     // Core dump
@@ -39,7 +43,6 @@ int main(int argc, char *argv[]) {
     QDir::setCurrent(QApplication::applicationDirPath());
     if (QFile::exists("updater.old")) {
         QFile::remove("updater.old");
-        QFile::remove("sing-box.exe"); // v1.11
     }
 #ifndef Q_OS_WIN
     if (!QFile::exists("updater")) {
@@ -52,8 +55,12 @@ int main(int argc, char *argv[]) {
     if (args.contains("-many")) NekoRay::dataStore->flag_many = true;
     if (args.contains("-appdata")) NekoRay::dataStore->flag_use_appdata = true;
     if (args.contains("-tray")) NekoRay::dataStore->flag_tray = true;
+    if (args.contains("-debug")) NekoRay::dataStore->flag_debug = true;
 #ifdef NKR_CPP_USE_APPDATA
     NekoRay::dataStore->flag_use_appdata = true;
+#endif
+#ifdef NKR_CPP_DEBUG
+    NekoRay::dataStore->flag_debug = true;
 #endif
 
     // dirs & clean
@@ -69,18 +76,32 @@ int main(int argc, char *argv[]) {
 
     // RunGuard
     RunGuard guard("nekoray" + wd.absolutePath());
-    if (!NekoRay::dataStore->flag_many) {
-        if (!guard.tryToRun()) {
-            QMessageBox::warning(nullptr, "NekoRay", QObject::tr("Another program is running."));
+    quint64 guard_data_in = GetRandomUint64();
+    quint64 guard_data_out = 0;
+    if (!NekoRay::dataStore->flag_many && !guard.tryToRun(&guard_data_in)) {
+        // Some Good System
+        if (guard.isAnotherRunning(&guard_data_out)) {
+            // Wake up a running instance
+            QLocalSocket socket;
+            socket.connectToServer(LOCAL_SERVER_PREFIX + Int2String(guard_data_out));
+            qDebug() << socket.fullServerName();
+            if (!socket.waitForConnected(500)) {
+                qDebug() << "Failed to wake a running instance.";
+                return 0;
+            }
+            qDebug() << "connected to local server, try to raise another program";
             return 0;
         }
+        // Some Bad System
+        QMessageBox::warning(nullptr, "NekoRay", "RunGuard disallow to run, use -many to force start.");
+        return 0;
     }
     MF_release_runguard = [&] { guard.release(); };
 
     // icons
     QIcon::setFallbackSearchPaths(QStringList{
-            ":/nekoray",
-            ":/icon",
+        ":/nekoray",
+        ":/icon",
     });
 
     // icon for no theme
@@ -95,13 +116,13 @@ int main(int argc, char *argv[]) {
     QDir dir;
     bool dir_success = true;
     if (!dir.exists("profiles")) {
-        dir_success = dir_success && dir.mkdir("profiles");
+        dir_success &= dir.mkdir("profiles");
     }
     if (!dir.exists("groups")) {
-        dir_success = dir_success && dir.mkdir("groups");
+        dir_success &= dir.mkdir("groups");
     }
     if (!dir.exists(ROUTES_PREFIX_NAME)) {
-        dir_success = dir_success && dir.mkdir(ROUTES_PREFIX_NAME);
+        dir_success &= dir.mkdir(ROUTES_PREFIX_NAME);
     }
     if (!dir_success) {
         QMessageBox::warning(nullptr, "Error", "No permission to write " + dir.absolutePath());
@@ -152,9 +173,22 @@ int main(int argc, char *argv[]) {
         QCoreApplication::installTranslator(&trans_qt);
     }
 
-    //Signals
+    // Signals
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
+
+    // QLocalServer
+    QLocalServer server;
+    auto server_name = LOCAL_SERVER_PREFIX + Int2String(guard_data_in);
+    QLocalServer::removeServer(server_name);
+    server.listen(server_name);
+    QObject::connect(&server, &QLocalServer::newConnection, &a, [&] {
+        auto socket = server.nextPendingConnection();
+        qDebug() << "nextPendingConnection:" << server_name << socket;
+        socket->deleteLater();
+        // raise main window
+        MW_dialog_message("", "Raise");
+    });
 
     UI_InitMainWindow();
     return QApplication::exec();

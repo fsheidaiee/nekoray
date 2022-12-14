@@ -1,6 +1,8 @@
 package neko_common
 
-import "net/http"
+import (
+	"net/http"
+)
 
 var Version_v2ray string = "N/A"
 var Version_neko string = "N/A"

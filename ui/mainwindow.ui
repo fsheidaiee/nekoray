@@ -270,11 +270,6 @@
            </attribute>
            <column>
             <property name="text">
-             <string/>
-            </property>
-           </column>
-           <column>
-            <property name="text">
              <string>Type</string>
             </property>
            </column>
@@ -512,6 +507,7 @@
     <addaction name="menu_routing_settings"/>
     <addaction name="menu_vpn_settings"/>
     <addaction name="menu_hotkey_settings"/>
+    <addaction name="menu_open_config_folder"/>
    </widget>
    <widget class="QMenu" name="menu_server">
     <property name="title">
@@ -776,7 +772,7 @@
   </action>
   <action name="menu_copy_links_nkr">
    <property name="text">
-    <string>Copy links of selected (Nekoray)</string>
+    <string>Copy links of selected (Neko Links)</string>
    </property>
    <property name="shortcut">
     <string notr="true">Ctrl+Alt+C</string>
@@ -843,6 +839,11 @@
   <action name="actionRestart_Program">
    <property name="text">
     <string>Restart Program</string>
+   </property>
+  </action>
+  <action name="menu_open_config_folder">
+   <property name="text">
+    <string>Open Config Folder</string>
    </property>
   </action>
  </widget>

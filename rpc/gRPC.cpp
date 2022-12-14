@@ -14,6 +14,7 @@
 #include <QtEndian>
 #include <QThread>
 #include <QMutex>
+#include <QAbstractNetworkCache>
 
 namespace QtGrpc {
     const char *GrpcAcceptEncodingHeader = "grpc-accept-encoding";
@@ -23,35 +24,60 @@ namespace QtGrpc {
     const char *GrpcStatusMessage = "grpc-message";
     const int GrpcMessageSizeHeaderSize = 5;
 
+    class NoCache : public QAbstractNetworkCache {
+    public:
+        QNetworkCacheMetaData metaData(const QUrl &url) override {
+            return {};
+        }
+        void updateMetaData(const QNetworkCacheMetaData &metaData) override {
+        }
+        QIODevice *data(const QUrl &url) override {
+            return nullptr;
+        }
+        bool remove(const QUrl &url) override {
+            return false;
+        }
+        [[nodiscard]] qint64 cacheSize() const override {
+            return 0;
+        }
+        QIODevice *prepare(const QNetworkCacheMetaData &metaData) override {
+            return nullptr;
+        }
+        void insert(QIODevice *device) override {
+        }
+        void clear() override {
+        }
+    };
+
     class Http2GrpcChannelPrivate : public QObject {
     private:
-        QString url_base;
         QThread *thread;
         QNetworkAccessManager *nm;
 
-        QString nekoray_auth;
+        QString url_base;
         QString serviceName;
+        QByteArray nekoray_auth;
 
-        // TODO WTF
+        // TODO Fixed?
         // https://github.com/semlanik/qtprotobuf/issues/116
-//        setCachingEnabled:  5  bytesDownloaded
-//        QNetworkReplyImpl: backend error: caching was enabled after some bytes had been written
+        //        setCachingEnabled:  5  bytesDownloaded
+        //        QNetworkReplyImpl: backend error: caching was enabled after some bytes had been written
 
         // async
         QNetworkReply *post(const QString &method, const QString &service, const QByteArray &args) {
             QUrl callUrl = url_base + "/" + service + "/" + method;
-//            qDebug() << "Service call url: " << callUrl;
+            // qDebug() << "Service call url: " << callUrl;
 
             QNetworkRequest request(callUrl);
-            request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
-            request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+            // request.setAttribute(QNetworkRequest::CacheSaveControlAttribute, false);
+            // request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+            request.setAttribute(QNetworkRequest::Http2DirectAttribute, true);
             request.setHeader(QNetworkRequest::ContentTypeHeader, QLatin1String{"application/grpc"});
             request.setRawHeader("Cache-Control", "no-store");
             request.setRawHeader(GrpcAcceptEncodingHeader, QByteArray{"identity,deflate,gzip"});
             request.setRawHeader(AcceptEncodingHeader, QByteArray{"identity,gzip"});
             request.setRawHeader(TEHeader, QByteArray{"trailers"});
-            request.setAttribute(QNetworkRequest::Http2DirectAttribute, true);
-            request.setRawHeader("nekoray_auth", nekoray_auth.toLatin1());
+            request.setRawHeader("nekoray_auth", nekoray_auth);
 
             QByteArray msg(GrpcMessageSizeHeaderSize, '\0');
             *reinterpret_cast<int *>(msg.data() + 1) = qToBigEndian((int) args.size());
@@ -83,9 +109,7 @@ namespace QtGrpc {
             return networkReply->readAll().mid(GrpcMessageSizeHeaderSize);
         }
 
-        QNetworkReply::NetworkError
-        call(const QString &method, const QString &service, const QByteArray &args, QByteArray &qByteArray,
-             int timeout_ms) {
+        QNetworkReply::NetworkError call(const QString &method, const QString &service, const QByteArray &args, QByteArray &qByteArray, int timeout_ms) {
             QNetworkReply *networkReply = post(method, service, args);
 
             QTimer *abortTimer = nullptr;
@@ -113,6 +137,7 @@ namespace QtGrpc {
             auto grpcStatus = QNetworkReply::NetworkError::ProtocolUnknownError;
             qByteArray = processReply(networkReply, grpcStatus);
             // qDebug() << __func__ << "RECV: " << qByteArray.toHex() << "grpcStatus" << grpcStatus;
+            // qDebug() << networkReply->rawHeaderPairs();
 
             networkReply->deleteLater();
             return grpcStatus;
@@ -121,11 +146,12 @@ namespace QtGrpc {
     public:
         Http2GrpcChannelPrivate(const QString &url_, const QString &nekoray_auth_, const QString &serviceName_) {
             url_base = "http://" + url_;
-            nekoray_auth = nekoray_auth_;
+            nekoray_auth = nekoray_auth_.toLatin1();
             serviceName = serviceName_;
             //
             thread = new QThread;
             nm = new QNetworkAccessManager();
+            nm->setCache(new NoCache);
             nm->moveToThread(thread);
             thread->start();
         }
@@ -144,15 +170,17 @@ namespace QtGrpc {
             QMutex lock;
             lock.lock();
 
-            runOnUiThread([&] {
-                err = call(methodName, serviceName, requestArray, responseArray, timeout_ms);
-                lock.unlock();
-            }, nm);
+            runOnUiThread(
+                [&] {
+                    err = call(methodName, serviceName, requestArray, responseArray, timeout_ms);
+                    lock.unlock();
+                },
+                nm);
 
             lock.lock();
             lock.unlock();
-//            qDebug() << "rsp err" << err;
-//            qDebug() << "rsp array" << responseArray;
+            // qDebug() << "rsp err" << err;
+            // qDebug() << "rsp array" << responseArray;
 
             if (err != QNetworkReply::NetworkError::NoError) {
                 return err;
@@ -162,9 +190,8 @@ namespace QtGrpc {
             }
             return QNetworkReply::NetworkError::NoError;
         }
-
     };
-}
+} // namespace QtGrpc
 
 namespace NekoRay::rpc {
     Client::Client(std::function<void(const QString &)> onError, const QString &target, const QString &token) {
@@ -172,10 +199,9 @@ namespace NekoRay::rpc {
         this->onError = std::move(onError);
     }
 
-#define NOT_OK *rpcOK = false; \
-    onError( \
-            QString("QNetworkReply::NetworkError code: %1\n").arg(status) \
-    );
+#define NOT_OK      \
+    *rpcOK = false; \
+    onError(QString("QNetworkReply::NetworkError code: %1\n").arg(status));
 
     void Client::Exit() {
         libcore::EmptyReq request;
@@ -207,18 +233,6 @@ namespace NekoRay::rpc {
         } else {
             NOT_OK
             return "";
-        }
-    }
-
-    bool Client::KeepAlive() {
-        libcore::EmptyReq request;
-        libcore::EmptyResp reply;
-        auto status = grpc_channel->Call("KeepAlive", request, &reply, 500);
-
-        if (status == QNetworkReply::NoError) {
-            return true;
-        } else {
-            return false;
         }
     }
 
@@ -276,6 +290,6 @@ namespace NekoRay::rpc {
             return reply;
         }
     }
-}
+} // namespace NekoRay::rpc
 
 #endif
