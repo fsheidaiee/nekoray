@@ -4,6 +4,7 @@
 #include "qv2ray/v2/ui/widgets/editors/w_JsonEditor.hpp"
 #include "fmt/Preset.hpp"
 #include "ui/ThemeManager.hpp"
+#include "ui/Icon.hpp"
 #include "main/GuiUtils.hpp"
 #include "main/NekoRay.hpp"
 
@@ -53,6 +54,7 @@ public:
 DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     : QDialog(parent), ui(new Ui::DialogBasicSettings) {
     ui->setupUi(this);
+    ADD_ASTERISK(this);
 
     // Common
 
@@ -65,6 +67,8 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     } else {
         ui->log_level->addItems({"debug", "info", "warning", "none"});
     }
+
+    refresh_auth();
 
     ui->socks_ip->setText(NekoRay::dataStore->inbound_address);
     ui->log_level->setCurrentText(NekoRay::dataStore->log_level);
@@ -100,6 +104,8 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     //
     D_LOAD_BOOL(check_include_pre)
     D_LOAD_BOOL(connection_statistics)
+    D_LOAD_BOOL(start_minimal)
+    D_LOAD_INT(max_log_line)
     //
     if (NekoRay::dataStore->traffic_loop_interval == 500) {
         ui->rfsh_r->setCurrentIndex(0);
@@ -136,6 +142,20 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         repaint();
         mainwindow->repaint();
         NekoRay::dataStore->Save();
+    });
+    //
+    ui->AA_EnableHighDpiScaling->setChecked(ReadFileText("groups/HiDPI").toInt() == 1);
+    connect(ui->AA_EnableHighDpiScaling, &QCheckBox::clicked, this, [=](bool checked) {
+        QFile file;
+        file.setFileName("groups/HiDPI");
+        file.open(QIODevice::ReadWrite | QIODevice::Truncate);
+        if (checked) {
+            file.write("1");
+        } else {
+            file.write("0");
+        }
+        file.close();
+        MessageBoxWarning(tr("Settings changed"), tr("Restart nekoray to take effect."));
     });
 
     // Subscription
@@ -254,6 +274,12 @@ void DialogBasicSettings::accept() {
     NekoRay::dataStore->language = ui->language->currentIndex();
     D_SAVE_BOOL(connection_statistics)
     D_SAVE_BOOL(check_include_pre)
+    D_SAVE_BOOL(start_minimal)
+    D_SAVE_INT(max_log_line)
+
+    if (NekoRay::dataStore->max_log_line <= 0) {
+        NekoRay::dataStore->max_log_line = 200;
+    }
 
     if (ui->rfsh_r->currentIndex() == 0) {
         NekoRay::dataStore->traffic_loop_interval = 500;
@@ -281,8 +307,24 @@ void DialogBasicSettings::accept() {
     D_SAVE_BOOL(skip_cert)
     NekoRay::dataStore->enable_js_hook = ui->enable_js_hook->currentIndex();
 
+    // 关闭连接统计，停止刷新前清空记录。
+    if (NekoRay::dataStore->traffic_loop_interval == 0 || NekoRay::dataStore->connection_statistics == false) {
+        MW_dialog_message("", "ClearConnectionList");
+    }
+
     MW_dialog_message(Dialog_DialogBasicSettings, "UpdateDataStore");
     QDialog::accept();
+}
+
+// slots
+
+void DialogBasicSettings::refresh_auth() {
+    ui->inbound_auth->setText({});
+    if (NekoRay::dataStore->inbound_auth->NeedAuth()) {
+        ui->inbound_auth->setIcon(Icon::GetMaterialIcon("lock-outline"));
+    } else {
+        ui->inbound_auth->setIcon(Icon::GetMaterialIcon("lock-open-outline"));
+    }
 }
 
 void DialogBasicSettings::on_set_custom_icon_clicked() {
@@ -305,4 +347,38 @@ void DialogBasicSettings::on_set_custom_icon_clicked() {
         return;
     }
     MW_dialog_message(Dialog_DialogBasicSettings, "UpdateIcon");
+}
+
+void DialogBasicSettings::on_inbound_auth_clicked() {
+    auto w = new QDialog(this);
+    w->setWindowTitle(tr("Inbound Auth"));
+    auto layout = new QGridLayout;
+    w->setLayout(layout);
+    //
+    auto user_l = new QLabel(tr("Username"));
+    auto pass_l = new QLabel(tr("Password"));
+    auto user = new MyLineEdit;
+    auto pass = new MyLineEdit;
+    user->setText(NekoRay::dataStore->inbound_auth->username);
+    pass->setText(NekoRay::dataStore->inbound_auth->password);
+    //
+    layout->addWidget(user_l, 0, 0);
+    layout->addWidget(user, 0, 1);
+    layout->addWidget(pass_l, 1, 0);
+    layout->addWidget(pass, 1, 1);
+    auto box = new QDialogButtonBox;
+    box->setOrientation(Qt::Horizontal);
+    box->setStandardButtons(QDialogButtonBox::Cancel | QDialogButtonBox::Ok);
+    connect(box, &QDialogButtonBox::accepted, w, [=] {
+        NekoRay::dataStore->inbound_auth->username = user->text();
+        NekoRay::dataStore->inbound_auth->password = pass->text();
+        NekoRay::dataStore->Save();
+        w->accept();
+    });
+    connect(box, &QDialogButtonBox::rejected, w, &QDialog::reject);
+    layout->addWidget(box, 2, 1);
+    //
+    w->exec();
+    w->deleteLater();
+    refresh_auth();
 }

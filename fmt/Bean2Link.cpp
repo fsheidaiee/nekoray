@@ -32,6 +32,7 @@ namespace NekoRay::fmt {
         url.setPort(serverPort);
         if (!name.isEmpty()) url.setFragment(name);
         if (!stream->sni.isEmpty()) query.addQueryItem("sni", stream->sni);
+        if (stream->allow_insecure) query.addQueryItem("allowInsecure", "1");
         query.addQueryItem("security", stream->security);
         query.addQueryItem("type", stream->network);
 
@@ -40,6 +41,11 @@ namespace NekoRay::fmt {
             if (!stream->host.isEmpty()) query.addQueryItem("host", stream->host);
         } else if (stream->network == "grpc") {
             if (!stream->path.isEmpty()) query.addQueryItem("serviceName", stream->path);
+        } else if (stream->network == "tcp") {
+            if (stream->header_type == "http") {
+                query.addQueryItem("headerType", "http");
+                query.addQueryItem("host", stream->host);
+            }
         }
 
         url.setQuery(query);

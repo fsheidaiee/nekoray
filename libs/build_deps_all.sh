@@ -3,9 +3,17 @@ set -e
 
 cd libs
 
+# 参数
+if [ -z $cmake ]; then
+  cmake="cmake"
+fi
+if [ -z $deps ]; then
+  deps="deps"
+fi
+
 # libs/deps/...
-mkdir -p deps
-cd deps
+mkdir -p $deps
+cd $deps
 if [ -z $NKR_PACKAGE ]; then
   INSTALL_PREFIX=$PWD/built
 else
@@ -19,24 +27,18 @@ clean() {
   rm -rf dl.zip yaml-* zxing-* protobuf
 }
 
-#### ZXing 1.3.0 ####
-curl -L -o dl.zip https://github.com/nu-book/zxing-cpp/archive/refs/tags/v1.3.0.zip
+#### ZXing v2.0.0 ####
+curl -L -o dl.zip https://github.com/nu-book/zxing-cpp/archive/refs/tags/v2.0.0.zip
 unzip dl.zip
 
 cd zxing-*
 mkdir -p build
 cd build
 
-cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF -DBUILD_BLACKBOX_TESTS=OFF -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
+$cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF -DBUILD_BLACKBOX_TESTS=OFF -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
 ninja && ninja install
 
 cd ../..
-
-#### exit if NKR_PACKAGE ####
-if [ ! -z $NKR_PACKAGE ]; then
-  clean
-  exit
-fi
 
 #### yaml-cpp ####
 curl -L -o dl.zip https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.7.0.zip
@@ -46,7 +48,7 @@ cd yaml-*
 mkdir -p build
 cd build
 
-cmake .. -GNinja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
+$cmake .. -GNinja -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX
 ninja && ninja install
 
 cd ../..
@@ -59,7 +61,7 @@ git clone --recurse-submodules -b v21.4 --depth 1 --shallow-submodules https://g
 mkdir -p protobuf/build
 cd protobuf/build
 
-cmake .. -GNinja \
+$cmake .. -GNinja \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=OFF \
   -Dprotobuf_MSVC_STATIC_RUNTIME=OFF \

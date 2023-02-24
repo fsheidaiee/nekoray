@@ -29,19 +29,26 @@ if (NKR_CROSS)
     set_property(TARGET Qt5::lupdate PROPERTY IMPORTED_LOCATION /usr/bin/lupdate)
 endif ()
 
-# Windows
-include("cmake/fuck_windows/fuck.cmake")
+#### Platform Variables ####
+if (APPLE)
+    include("cmake/macos/macos.cmake")
+elseif (WIN32)
+    include("cmake/windows/windows.cmake")
+else ()
+    include("cmake/linux/linux.cmake")
+endif ()
 
 #### default prefix path ####
 
-if (NKR_PACKAGE)
-    list(APPEND NKR_LIBS ${CMAKE_SOURCE_DIR}/libs/deps/package)
-else ()
-    list(APPEND NKR_LIBS ${CMAKE_SOURCE_DIR}/libs/deps/built)
+if (NOT NKR_LIBS)
+    if (NKR_PACKAGE)
+        list(APPEND NKR_LIBS ${CMAKE_SOURCE_DIR}/libs/deps/package)
+    else ()
+        list(APPEND NKR_LIBS ${CMAKE_SOURCE_DIR}/libs/deps/built)
+    endif ()
 endif ()
 
-if (NKR_DISABLE_LIBS)
-else ()
+if (NOT NKR_DISABLE_LIBS)
     list(APPEND CMAKE_PREFIX_PATH ${NKR_LIBS})
 endif ()
 
@@ -128,12 +135,13 @@ endif ()
 
 # Sources
 set(PROJECT_SOURCES
-        ${PLATFORM_FUCKING_SOURCES}
+        ${PLATFORM_SOURCES}
 
         main/main.cpp
         main/NekoRay.cpp
         main/NekoRay_Utils.cpp
         main/QJS.cpp
+        main/HTTPRequestHelper.cpp
 
         3rdparty/base64.cpp
         3rdparty/qrcodegen.cpp
@@ -141,7 +149,6 @@ set(PROJECT_SOURCES
 
         qv2ray/v2/ui/LogHighlighter.cpp
         qv2ray/v2/ui/QvAutoCompleteTextEdit.cpp
-        qv2ray/v2/utils/HTTPRequestHelper.cpp
         qv2ray/v2/components/proxy/QvProxyConfigurator.cpp
         qv2ray/v2/ui/widgets/common/QJsonModel.cpp
         qv2ray/v2/ui/widgets/editors/w_JsonEditor.cpp
@@ -173,7 +180,7 @@ set(PROJECT_SOURCES
         sys/AutoRun.cpp
 
         ui/ThemeManager.cpp
-        ui/TrayIcon.cpp
+        ui/Icon.cpp
 
         ui/mainwindow_grpc.cpp
         ui/mainwindow.cpp
@@ -292,6 +299,7 @@ set_target_properties(nekoray PROPERTIES
 
 set(TS_FILES
         translations/zh_CN.ts
+        translations/fa_IR.ts
         )
 if (${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_lupdate(nekoray TS_FILES ${TS_FILES})
@@ -308,7 +316,7 @@ target_link_libraries(nekoray PRIVATE
         Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network Qt${QT_VERSION_MAJOR}::Svg
         Threads::Threads
         ${NKR_EXTERNAL_TARGETS}
-        ${PLATFORM_FUCKING_LIBRARIES}
+        ${PLATFORM_LIBRARIES}
         )
 
 if (QT_VERSION_MAJOR EQUAL 6)

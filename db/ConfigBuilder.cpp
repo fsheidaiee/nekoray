@@ -27,7 +27,7 @@ namespace NekoRay {
         }
 
         // hook.js
-        if (result->error.isEmpty()) {
+        if (result->error.isEmpty() && !forTest) {
             auto source = qjs::ReadHookJS();
             if (!source.isEmpty()) {
                 qjs::QJS js(source);
@@ -100,34 +100,28 @@ namespace NekoRay {
         }
     }
 
-#define DOMAIN_USER_RULE                                                    \
-    for (const auto &line: SplitLines(dataStore->routing->proxy_domain)) {  \
-        if (line.startsWith("#")) continue;                                 \
-        if (dataStore->dns_routing) status->domainListDNSRemote += line;    \
-        status->domainListRemote += line;                                   \
-    }                                                                       \
-    for (const auto &line: SplitLines(dataStore->routing->direct_domain)) { \
-        if (line.startsWith("#")) continue;                                 \
-        if (dataStore->dns_routing) status->domainListDNSDirect += line;    \
-        status->domainListDirect += line;                                   \
-    }                                                                       \
-    for (const auto &line: SplitLines(dataStore->routing->block_domain)) {  \
-        if (line.startsWith("#")) continue;                                 \
-        status->domainListBlock += line;                                    \
+#define DOMAIN_USER_RULE                                                             \
+    for (const auto &line: SplitLinesSkipSharp(dataStore->routing->proxy_domain)) {  \
+        if (dataStore->dns_routing) status->domainListDNSRemote += line;             \
+        status->domainListRemote += line;                                            \
+    }                                                                                \
+    for (const auto &line: SplitLinesSkipSharp(dataStore->routing->direct_domain)) { \
+        if (dataStore->dns_routing) status->domainListDNSDirect += line;             \
+        status->domainListDirect += line;                                            \
+    }                                                                                \
+    for (const auto &line: SplitLinesSkipSharp(dataStore->routing->block_domain)) {  \
+        status->domainListBlock += line;                                             \
     }
 
-#define IP_USER_RULE                                                    \
-    for (const auto &line: SplitLines(dataStore->routing->block_ip)) {  \
-        if (line.startsWith("#")) continue;                             \
-        status->ipListBlock += line;                                    \
-    }                                                                   \
-    for (const auto &line: SplitLines(dataStore->routing->proxy_ip)) {  \
-        if (line.startsWith("#")) continue;                             \
-        status->ipListRemote += line;                                   \
-    }                                                                   \
-    for (const auto &line: SplitLines(dataStore->routing->direct_ip)) { \
-        if (line.startsWith("#")) continue;                             \
-        status->ipListDirect += line;                                   \
+#define IP_USER_RULE                                                             \
+    for (const auto &line: SplitLinesSkipSharp(dataStore->routing->block_ip)) {  \
+        status->ipListBlock += line;                                             \
+    }                                                                            \
+    for (const auto &line: SplitLinesSkipSharp(dataStore->routing->proxy_ip)) {  \
+        status->ipListRemote += line;                                            \
+    }                                                                            \
+    for (const auto &line: SplitLinesSkipSharp(dataStore->routing->direct_ip)) { \
+        status->ipListDirect += line;                                            \
     }
 
     // V2Ray
@@ -147,32 +141,49 @@ namespace NekoRay {
         };
 
         // socks-in
-        if (InRange(dataStore->inbound_socks_port, 0, 65535) && !status->forTest) {
-            QJsonObject socksInbound;
-            socksInbound["tag"] = "socks-in";
-            socksInbound["protocol"] = "socks";
-            socksInbound["listen"] = dataStore->inbound_address;
-            socksInbound["port"] = dataStore->inbound_socks_port;
-            socksInbound["settings"] = QJsonObject{
-                {"auth", "noauth"},
-                {"udp", true},
-            };
+        if (IsValidPort(dataStore->inbound_socks_port) && !status->forTest) {
+            QJsonObject inboundObj;
+            inboundObj["tag"] = "socks-in";
+            inboundObj["protocol"] = "socks";
+            inboundObj["listen"] = dataStore->inbound_address;
+            inboundObj["port"] = dataStore->inbound_socks_port;
+            QJsonObject socksSettings = {{"udp", true}};
             if (dataStore->fake_dns || dataStore->sniffing_mode != SniffingMode::DISABLE) {
-                socksInbound["sniffing"] = sniffing;
+                inboundObj["sniffing"] = sniffing;
             }
-            status->inbounds += socksInbound;
+            if (dataStore->inbound_auth->NeedAuth()) {
+                socksSettings["auth"] = "password";
+                socksSettings["accounts"] = QJsonArray{
+                    QJsonObject{
+                        {"user", dataStore->inbound_auth->username},
+                        {"pass", dataStore->inbound_auth->password},
+                    },
+                };
+            }
+            inboundObj["settings"] = socksSettings;
+            status->inbounds += inboundObj;
         }
         // http-in
-        if (InRange(dataStore->inbound_http_port, 0, 65535) && !status->forTest) {
-            QJsonObject socksInbound;
-            socksInbound["tag"] = "http-in";
-            socksInbound["protocol"] = "http";
-            socksInbound["listen"] = dataStore->inbound_address;
-            socksInbound["port"] = dataStore->inbound_http_port;
+        if (IsValidPort(dataStore->inbound_http_port) && !status->forTest) {
+            QJsonObject inboundObj;
+            inboundObj["tag"] = "http-in";
+            inboundObj["protocol"] = "http";
+            inboundObj["listen"] = dataStore->inbound_address;
+            inboundObj["port"] = dataStore->inbound_http_port;
             if (dataStore->sniffing_mode != SniffingMode::DISABLE) {
-                socksInbound["sniffing"] = sniffing;
+                inboundObj["sniffing"] = sniffing;
             }
-            status->inbounds += socksInbound;
+            if (dataStore->inbound_auth->NeedAuth()) {
+                inboundObj["settings"] = QJsonObject{
+                    {"accounts", QJsonArray{
+                                     QJsonObject{
+                                         {"user", dataStore->inbound_auth->username},
+                                         {"pass", dataStore->inbound_auth->password},
+                                     },
+                                 }},
+                };
+            }
+            status->inbounds += inboundObj;
         }
 
         // Outbounds
@@ -193,27 +204,7 @@ namespace NekoRay {
             {"tag", "block"},
         };
 
-        // block for tun
-        if (!status->forTest) {
-            status->routingRules += QJsonObject{
-                {"type", "field"},
-                {
-                    "ip",
-                    QJsonArray{
-                        "224.0.0.0/3",
-                        "169.254.0.0/16",
-                    },
-                },
-                {"outboundTag", "block"},
-            };
-            status->routingRules += QJsonObject{
-                {"type", "field"},
-                {"port", "135-139"},
-                {"outboundTag", "block"},
-            };
-        }
-
-        // DNS Routing (tun2socks 用到，防污染)
+        // DNS Routing
         if (dataStore->dns_routing && !status->forTest) {
             QJsonObject dnsOut;
             dnsOut["protocol"] = "dns";
@@ -232,11 +223,6 @@ namespace NekoRay {
                 {"type", "field"},
                 {"port", "53"},
                 {"inboundTag", QJsonArray{"socks-in", "http-in"}},
-                {"outboundTag", "dns-out"},
-            };
-            status->routingRules += QJsonObject{
-                {"type", "field"},
-                {"inboundTag", QJsonArray{"dns-in"}},
                 {"outboundTag", "dns-out"},
             };
         }
@@ -261,6 +247,7 @@ namespace NekoRay {
         QJsonObject dnsServerRemote;
         dnsServerRemote["address"] = dataStore->fake_dns ? "fakedns" : dataStore->remote_dns;
         dnsServerRemote["domains"] = QList2QJsonArray<QString>(status->domainListDNSRemote);
+        dnsServerRemote["queryStrategy"] = dataStore->remote_dns_strategy;
         if (!status->forTest) dnsServers += dnsServerRemote;
 
         // Direct
@@ -288,12 +275,13 @@ namespace NekoRay {
             });
         }
         dnsServers += QJsonObject{
-            {"address", directDnsAddress},
+            {"address", directDnsAddress.replace("https://", "https+local://")},
+            {"fallbackStrategy", "disabled"},
+            {"queryStrategy", dataStore->direct_dns_strategy},
             {"domains", QList2QJsonArray<QString>(status->domainListDNSDirect)},
-            {"skipFallback", true},
         };
 
-        dns["disableFallbackIfMatch"] = true;
+        dns["fallbackStrategy"] = "disabled_if_any_match";
         dns["servers"] = dnsServers;
         dns["tag"] = "dns";
         status->result->coreConfig.insert("dns", dns);
@@ -304,7 +292,7 @@ namespace NekoRay {
         routing["domainMatcher"] = dataStore->domain_matcher == DomainMatcher::MPH ? "mph" : "linear";
         if (status->forTest) routing["domainStrategy"] = "AsIs";
 
-        // final add block route
+        // final add user rule (block)
         QJsonObject routingRule_tmp;
         routingRule_tmp["type"] = "field";
         routingRule_tmp["outboundTag"] = "block";
@@ -319,7 +307,7 @@ namespace NekoRay {
             status->routingRules += tmp;
         }
 
-        // final add proxy route
+        // final add user rule (proxy)
         routingRule_tmp["outboundTag"] = "proxy";
         if (!status->ipListRemote.isEmpty()) {
             auto tmp = routingRule_tmp;
@@ -332,7 +320,7 @@ namespace NekoRay {
             status->routingRules += tmp;
         }
 
-        // final add bypass route
+        // final add user rule (bypass)
         routingRule_tmp["outboundTag"] = "bypass";
         if (!status->ipListDirect.isEmpty()) {
             auto tmp = routingRule_tmp;
@@ -345,8 +333,14 @@ namespace NekoRay {
             status->routingRules += tmp;
         }
 
+        // def_outbound
+        if (!status->forTest) status->routingRules += QJsonObject{
+                                  {"type", "field"},
+                                  {"port", "0-65535"},
+                                  {"outboundTag", dataStore->routing->def_outbound},
+                              };
+
         // final add routing rule
-        // custom routing rule
         auto routingRules = QString2QJsonObject(dataStore->routing->custom)["rules"].toArray();
         if (status->forTest) routingRules = {};
         if (!status->forTest) QJSONARRAY_ADD(routingRules, QString2QJsonObject(dataStore->custom_route_global)["rules"].toArray())
@@ -450,8 +444,28 @@ namespace NekoRay {
             }
 
             // chain rules: this
-            auto mapping_port = MkPort();
+            auto ext_mapping_port = 0;
+            auto ext_socks_port = 0;
             auto thisExternalStat = ent->bean->NeedExternal(isFirstProfile, dataStore->running_spmode == SystemProxyMode::VPN);
+            // determine port
+            if (thisExternalStat > 0) {
+                if (ent->type == "custom") {
+                    auto bean = ent->CustomBean();
+                    if (IsValidPort(bean->mapping_port)) {
+                        ext_mapping_port = bean->mapping_port;
+                    } else {
+                        ext_mapping_port = MkPort();
+                    }
+                    if (IsValidPort(bean->socks_port)) {
+                        ext_socks_port = bean->socks_port;
+                    } else {
+                        ext_socks_port = MkPort();
+                    }
+                } else {
+                    ext_mapping_port = MkPort();
+                    ext_socks_port = MkPort();
+                }
+            }
             if (thisExternalStat == 2) dataStore->need_keep_vpn_off = true;
             if (thisExternalStat == 1) {
                 // mapping
@@ -460,7 +474,7 @@ namespace NekoRay {
                         {"type", "direct"},
                         {"tag", tagOut + "-mapping"},
                         {"listen", "127.0.0.1"},
-                        {"listen_port", mapping_port},
+                        {"listen_port", ext_mapping_port},
                         {"override_address", ent->bean->serverAddress},
                         {"override_port", ent->bean->serverPort},
                     };
@@ -469,7 +483,7 @@ namespace NekoRay {
                         {"protocol", "dokodemo-door"},
                         {"tag", tagOut + "-mapping"},
                         {"listen", "127.0.0.1"},
-                        {"port", mapping_port},
+                        {"port", ext_mapping_port},
                         {"settings", QJsonObject{
                                          // to
                                          {"address", ent->bean->serverAddress},
@@ -498,12 +512,9 @@ namespace NekoRay {
             // Outbound
 
             QJsonObject outbound;
-            fmt::CoreObjOutboundBuildResult coreR;
-            fmt::ExternalBuildResult extR;
 
             if (thisExternalStat > 0) {
-                auto ext_socks_port = MkPort();
-                extR = ent->bean->BuildExternal(mapping_port, ext_socks_port, thisExternalStat);
+                const auto extR = ent->bean->BuildExternal(ext_mapping_port, ext_socks_port, thisExternalStat);
                 if (extR.program.isEmpty()) {
                     status->result->error = QObject::tr("Core not found: %1").arg(ent->bean->DisplayType());
                     return {};
@@ -531,14 +542,14 @@ namespace NekoRay {
                 }
 
                 // EXTERNAL PROCESS
-                auto extC = new sys::ExternalProcess();
+                QSharedPointer<sys::ExternalProcess> extC(new sys::ExternalProcess());
                 extC->tag = ent->bean->DisplayType();
                 extC->program = extR.program;
                 extC->arguments = extR.arguments;
                 extC->env = extR.env;
-                status->result->ext += extC;
+                status->result->exts.emplace_back(extR, extC);
             } else {
-                coreR = IS_NEKO_BOX ? ent->bean->BuildCoreObjSingBox() : ent->bean->BuildCoreObjV2Ray();
+                const auto coreR = IS_NEKO_BOX ? ent->bean->BuildCoreObjSingBox() : ent->bean->BuildCoreObjV2Ray();
                 if (coreR.outbound.isEmpty()) {
                     status->result->error = "unsupported outbound";
                     return {};
@@ -587,8 +598,12 @@ namespace NekoRay {
                         if (stream != nullptr && !stream->packet_encoding.isEmpty()) {
                             muxObj["packetEncoding"] = stream->packet_encoding;
                         }
-                        outbound["mux"] = muxObj;
-                        muxApplied = true;
+                        if (stream != nullptr && stream->network == "grpc") {
+                            // ignore mux.cool for gRPC
+                        } else {
+                            outbound["mux"] = muxObj;
+                            muxApplied = true;
+                        }
                     }
                 }
             }
@@ -601,11 +616,7 @@ namespace NekoRay {
 
             // Bypass Lookup for the first profile
             if (isFirstProfile && !IsIpAddress(ent->bean->serverAddress)) {
-                if (dataStore->enhance_resolve_server_domain && !IS_NEKO_BOX) {
-                    status->result->tryDomains += ent->bean->serverAddress;
-                } else {
-                    status->domainListDNSDirect += "full:" + ent->bean->serverAddress;
-                }
+                status->domainListDNSDirect += "full:" + ent->bean->serverAddress;
             }
 
             status->outbounds += outbound;
@@ -626,17 +637,25 @@ namespace NekoRay {
         // Inbounds
 
         // mixed-in
-        if (InRange(dataStore->inbound_socks_port, 0, 65535) && !status->forTest) {
-            QJsonObject socksInbound;
-            socksInbound["tag"] = "mixed-in";
-            socksInbound["type"] = "mixed";
-            socksInbound["listen"] = dataStore->inbound_address;
-            socksInbound["listen_port"] = dataStore->inbound_socks_port;
+        if (IsValidPort(dataStore->inbound_socks_port) && !status->forTest) {
+            QJsonObject inboundObj;
+            inboundObj["tag"] = "mixed-in";
+            inboundObj["type"] = "mixed";
+            inboundObj["listen"] = dataStore->inbound_address;
+            inboundObj["listen_port"] = dataStore->inbound_socks_port;
             if (dataStore->sniffing_mode != SniffingMode::DISABLE) {
-                socksInbound["sniff"] = true;
-                socksInbound["sniff_override_destination"] = dataStore->sniffing_mode == SniffingMode::FOR_DESTINATION;
+                inboundObj["sniff"] = true;
+                inboundObj["sniff_override_destination"] = dataStore->sniffing_mode == SniffingMode::FOR_DESTINATION;
             }
-            status->inbounds += socksInbound;
+            if (dataStore->inbound_auth->NeedAuth()) {
+                inboundObj["users"] = QJsonArray{
+                    QJsonObject{
+                        {"username", dataStore->inbound_auth->username},
+                        {"password", dataStore->inbound_auth->password},
+                    },
+                };
+            }
+            status->inbounds += inboundObj;
         }
 
         // Outbounds
@@ -684,8 +703,8 @@ namespace NekoRay {
             //
             QJsonArray domain_keyword;
             QJsonArray domain_subdomain;
+            QJsonArray domain_regexp;
             QJsonArray domain_full;
-            QJsonArray domain_suffix;
             QJsonArray geosite;
             for (auto item: list) {
                 if (isIP) {
@@ -695,14 +714,19 @@ namespace NekoRay {
                         ip_cidr += item;
                     }
                 } else {
+                    // https://www.v2fly.org/config/dns.html#dnsobject
                     if (item.startsWith("geosite:")) {
                         geosite += item.replace("geosite:", "");
                     } else if (item.startsWith("full:")) {
                         domain_full += item.replace("full:", "");
                     } else if (item.startsWith("domain:")) {
-                        domain_suffix += item.replace("domain:", "");
+                        domain_subdomain += item.replace("domain:", "");
+                    } else if (item.startsWith("regexp:")) {
+                        domain_regexp += item.replace("regexp:", "");
+                    } else if (item.startsWith("keyword:")) {
+                        domain_keyword += item.replace("keyword:", "");
                     } else {
-                        domain_keyword += item;
+                        domain_full += item;
                     }
                 }
             }
@@ -711,12 +735,13 @@ namespace NekoRay {
                 rule["ip_cidr"] = ip_cidr;
                 rule["geoip"] = geoip;
             } else {
-                if (domain_keyword.isEmpty() && domain_subdomain.isEmpty() && domain_full.isEmpty() && geosite.isEmpty()) {
+                if (domain_keyword.isEmpty() && domain_subdomain.isEmpty() && domain_regexp.isEmpty() && domain_full.isEmpty() && geosite.isEmpty()) {
                     return rule;
                 }
                 rule["domain"] = domain_full;
-                rule["domain_suffix"] = domain_suffix;
+                rule["domain_suffix"] = domain_subdomain; // v2ray Subdomain => sing-box suffix
                 rule["domain_keyword"] = domain_keyword;
+                rule["domain_regex"] = domain_regexp;
                 rule["geosite"] = geosite;
             }
             return rule;
@@ -732,6 +757,7 @@ namespace NekoRay {
             dnsServers += QJsonObject{
                 {"tag", "dns-remote"},
                 {"address_resolver", "dns-underlying"},
+                {"strategy", dataStore->remote_dns_strategy},
                 {"address", dataStore->remote_dns},
                 {"detour", tagProxy},
             };
@@ -746,6 +772,7 @@ namespace NekoRay {
             dnsServers += QJsonObject{
                 {"tag", "dns-direct"},
                 {"address_resolver", "dns-underlying"},
+                {"strategy", dataStore->direct_dns_strategy},
                 {"address", directDNSAddress.replace("+local://", "://")},
                 {"detour", "direct"},
             };
@@ -774,22 +801,18 @@ namespace NekoRay {
 
         // Routing
 
-        // custom routing rule (top)
-        auto routingRules = QString2QJsonObject(dataStore->routing->custom)["rules"].toArray();
-        if (status->forTest) routingRules = {};
-
         // dns hijack
-        if (!status->forTest) routingRules += QJsonObject{{"protocol", "dns"}, {"outbound", "dns-out"}};
+        if (!status->forTest) status->routingRules += QJsonObject{{"protocol", "dns"}, {"outbound", "dns-out"}};
 
         // sing-box routing rule object
         auto add_rule_route = [&](const QStringList &list, bool isIP, const QString &out) {
             auto rule = make_rule(list, isIP);
             if (rule.isEmpty()) return;
             rule["outbound"] = out;
-            routingRules += rule;
+            status->routingRules += rule;
         };
 
-        // final add routing rule
+        // final add user rule
         add_rule_route(status->ipListBlock, true, "block");
         add_rule_route(status->ipListRemote, true, tagProxy);
         add_rule_route(status->ipListDirect, true, "bypass");
@@ -804,6 +827,8 @@ namespace NekoRay {
         if (geosite.isEmpty()) status->result->error = +"geosite.db not found";
 
         // final add routing rule
+        auto routingRules = QString2QJsonObject(dataStore->routing->custom)["rules"].toArray();
+        if (status->forTest) routingRules = {};
         if (!status->forTest) QJSONARRAY_ADD(routingRules, QString2QJsonObject(dataStore->custom_route_global)["rules"].toArray())
         QJSONARRAY_ADD(routingRules, status->routingRules)
         auto routeObj = QJsonObject{
@@ -821,6 +846,7 @@ namespace NekoRay {
                     {"path", geosite},
                 },
             }};
+        if (!status->forTest) routeObj["final"] = dataStore->routing->def_outbound;
         if (status->forExport) {
             routeObj.remove("geoip");
             routeObj.remove("geosite");
@@ -842,26 +868,34 @@ namespace NekoRay {
     }
 
     QString WriteVPNSingBoxConfig() {
-        //
-        QString process_name_rule = dataStore->vpn_bypass_process.trimmed();
+        auto match_out = NekoRay::dataStore->vpn_rule_white ? "nekoray-socks" : "direct";
+        auto no_match_out = NekoRay::dataStore->vpn_rule_white ? "direct" : "nekoray-socks";
+        // user rule
+        QString process_name_rule = dataStore->vpn_rule_process.trimmed();
         if (!process_name_rule.isEmpty()) {
-            auto arr = SplitLines(process_name_rule);
-            QJsonObject rule{{"outbound", "direct"},
+            auto arr = SplitLinesSkipSharp(process_name_rule);
+            QJsonObject rule{{"outbound", match_out},
                              {"process_name", QList2QJsonArray(arr)}};
             process_name_rule = "," + QJsonObject2QString(rule, false);
         }
-        QString cidr_rule = dataStore->vpn_bypass_cidr.trimmed();
+        QString cidr_rule = dataStore->vpn_rule_cidr.trimmed();
         if (!cidr_rule.isEmpty()) {
-            auto arr = SplitLines(cidr_rule);
-            QJsonObject rule{{"outbound", "direct"},
+            auto arr = SplitLinesSkipSharp(cidr_rule);
+            QJsonObject rule{{"outbound", match_out},
                              {"ip_cidr", QList2QJsonArray(arr)}};
             cidr_rule = "," + QJsonObject2QString(rule, false);
         }
-        //
+        // tun name
         auto tun_name = "nekoray-tun";
 #ifdef Q_OS_MACOS
         tun_name = "utun9";
 #endif
+        // auth
+        QString socks_user_pass;
+        if (dataStore->inbound_auth->NeedAuth()) {
+            socks_user_pass = R"( "username": "%1", "password": "%2", )";
+            socks_user_pass = socks_user_pass.arg(dataStore->inbound_auth->username, dataStore->inbound_auth->password);
+        }
         // gen config
         auto configFn = ":/neko/vpn/sing-box-vpn.json";
         if (QFile::exists("vpn/sing-box-vpn.json")) configFn = "vpn/sing-box-vpn.json";
@@ -873,6 +907,8 @@ namespace NekoRay {
                           .replace("%CIDR_RULE%", cidr_rule)
                           .replace("%TUN_NAME%", tun_name)
                           .replace("%STRICT_ROUTE%", dataStore->vpn_strict_route ? "true" : "false")
+                          .replace("%SOCKS_USER_PASS%", socks_user_pass)
+                          .replace("%FINAL_OUT%", no_match_out)
                           .replace("%PORT%", Int2String(dataStore->inbound_socks_port));
         // hook.js
         auto source = qjs::ReadHookJS();
@@ -894,11 +930,13 @@ namespace NekoRay {
     }
 
     QString WriteVPNLinuxScript(const QString &protectPath, const QString &configPath) {
+#ifdef Q_OS_WIN
+        return {};
+#endif
         // gen script
         auto scriptFn = ":/neko/vpn/vpn-run-root.sh";
         if (QFile::exists("vpn/vpn-run-root.sh")) scriptFn = "vpn/vpn-run-root.sh";
         auto script = ReadFileText(scriptFn)
-                          .replace("$PORT", Int2String(dataStore->inbound_socks_port))
                           .replace("./nekobox_core", QApplication::applicationDirPath() + "/nekobox_core")
                           .replace("$PROTECT_LISTEN_PATH", protectPath)
                           .replace("$CONFIG_PATH", configPath)

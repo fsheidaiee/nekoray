@@ -9,11 +9,11 @@
 #include <QMessageBox>
 #include <QListWidget>
 
-#define REFRESH_ACTIVE_ROUTING(a, r)                         \
-    active_routing = a;                                      \
-    ui->active_routing->setText("[" + active_routing + "]"); \
-    setWindowTitle(title_base + " [" + a + "]");             \
-    SetRouteConfig(*r);
+#define REFRESH_ACTIVE_ROUTING(name, obj)           \
+    this->active_routing = name;                    \
+    ui->active_routing->setText(name);              \
+    setWindowTitle(title_base + " [" + name + "]"); \
+    SetRouteConfig(*obj);
 
 #define SAVE_TO_ROUTING(r)                             \
     r->direct_ip = directIPTxt->toPlainText();         \
@@ -22,6 +22,7 @@
     r->proxy_domain = proxyDomainTxt->toPlainText();   \
     r->block_ip = blockIPTxt->toPlainText();           \
     r->block_domain = blockDomainTxt->toPlainText();   \
+    r->def_outbound = ui->def_outbound->currentText(); \
     r->custom = CACHE.custom_route;
 
 DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(new Ui::DialogManageRoutes) {
@@ -29,10 +30,8 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     title_base = windowTitle();
 
     if (IS_NEKO_BOX) {
-        ui->enhance_resolve_server_domain->setVisible(false);
         ui->domain_v2ray->setVisible(false);
     } else {
-        ui->enhance_resolve_server_domain->setVisible(true);
         ui->domain_v2ray->setVisible(true);
     }
     //
@@ -43,7 +42,6 @@ DialogManageRoutes::DialogManageRoutes(QWidget *parent) : QDialog(parent), ui(ne
     ui->dns_routing->setChecked(NekoRay::dataStore->dns_routing);
     ui->dns_remote->setText(NekoRay::dataStore->remote_dns);
     ui->dns_direct->setText(NekoRay::dataStore->direct_dns);
-    ui->enhance_resolve_server_domain->setChecked(NekoRay::dataStore->enhance_resolve_server_domain);
     D_C_LOAD_STRING(custom_route_global)
     //
     connect(ui->custom_route_edit, &QPushButton::clicked, this, [=] {
@@ -93,7 +91,6 @@ void DialogManageRoutes::accept() {
     NekoRay::dataStore->dns_routing = ui->dns_routing->isChecked();
     NekoRay::dataStore->remote_dns = ui->dns_remote->text();
     NekoRay::dataStore->direct_dns = ui->dns_direct->text();
-    NekoRay::dataStore->enhance_resolve_server_domain = ui->enhance_resolve_server_domain->isChecked();
     D_C_SAVE_STRING(custom_route_global)
     bool routeChanged = false;
     if (NekoRay::dataStore->active_routing != active_routing) routeChanged = true;
@@ -135,6 +132,7 @@ void DialogManageRoutes::SetRouteConfig(const NekoRay::Routing &conf) {
     proxyIPTxt->setPlainText(conf.proxy_ip);
     //
     CACHE.custom_route = conf.custom;
+    ui->def_outbound->setCurrentText(conf.def_outbound);
 }
 
 void DialogManageRoutes::on_load_save_clicked() {
@@ -167,10 +165,10 @@ void DialogManageRoutes::on_load_save_clicked() {
         auto fn = lineEdit->text();
         if (!fn.isEmpty()) {
             auto r = std::make_unique<NekoRay::Routing>();
-            r->load_control_force = true;
+            r->load_control_must = true;
             r->fn = ROUTES_PREFIX + fn;
             if (r->Load()) {
-                if (QMessageBox::question(nullptr, software_name, tr("Load routing: %1").arg(fn) + "\n" + r->toString()) == QMessageBox::Yes) {
+                if (QMessageBox::question(nullptr, software_name, tr("Load routing: %1").arg(fn) + "\n" + r->DisplayRouting()) == QMessageBox::Yes) {
                     REFRESH_ACTIVE_ROUTING(fn, r)
                     w->accept();
                 }
@@ -183,7 +181,7 @@ void DialogManageRoutes::on_load_save_clicked() {
             auto r = std::make_unique<NekoRay::Routing>();
             SAVE_TO_ROUTING(r)
             r->fn = ROUTES_PREFIX + fn;
-            if (QMessageBox::question(nullptr, software_name, tr("Save routing: %1").arg(fn) + "\n" + r->toString()) == QMessageBox::Yes) {
+            if (QMessageBox::question(nullptr, software_name, tr("Save routing: %1").arg(fn) + "\n" + r->DisplayRouting()) == QMessageBox::Yes) {
                 r->Save();
                 REFRESH_ACTIVE_ROUTING(fn, r)
                 w->accept();
@@ -209,6 +207,49 @@ void DialogManageRoutes::on_load_save_clicked() {
         lineEdit->setText(item->text());
         emit load->clicked();
     });
+    w->exec();
+    w->deleteLater();
+}
+void DialogManageRoutes::on_queryStrategy_clicked() {
+    auto w = new QDialog(this);
+    w->setWindowTitle("DNS Query Strategy");
+    auto layout = new QGridLayout;
+    w->setLayout(layout);
+    //
+    QStringList qsValue{""};
+    if (IS_NEKO_BOX) {
+        qsValue += QString("prefer_ipv4 prefer_ipv6 ipv4_only ipv6_only").split(" ");
+    } else {
+        qsValue += QString("use_ip use_ip4 use_ip6").split(" ");
+    }
+    //
+    auto remote_l = new QLabel(tr("Remote"));
+    auto direct_l = new QLabel(tr("Direct"));
+    auto remote = new QComboBox;
+    auto direct = new QComboBox;
+    remote->setEditable(true);
+    remote->addItems(qsValue);
+    remote->setCurrentText(NekoRay::dataStore->remote_dns_strategy);
+    direct->setEditable(true);
+    direct->addItems(qsValue);
+    direct->setCurrentText(NekoRay::dataStore->direct_dns_strategy);
+    //
+    layout->addWidget(remote_l, 0, 0);
+    layout->addWidget(remote, 0, 1);
+    layout->addWidget(direct_l, 1, 0);
+    layout->addWidget(direct, 1, 1);
+    auto box = new QDialogButtonBox;
+    box->setOrientation(Qt::Horizontal);
+    box->setStandardButtons(QDialogButtonBox::Cancel | QDialogButtonBox::Ok);
+    connect(box, &QDialogButtonBox::accepted, w, [=] {
+        NekoRay::dataStore->remote_dns_strategy = remote->currentText();
+        NekoRay::dataStore->direct_dns_strategy = direct->currentText();
+        NekoRay::dataStore->Save();
+        w->accept();
+    });
+    connect(box, &QDialogButtonBox::rejected, w, &QDialog::reject);
+    layout->addWidget(box, 2, 1);
+    //
     w->exec();
     w->deleteLater();
 }

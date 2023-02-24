@@ -8,13 +8,12 @@ namespace NekoRay {
     public:
         QString error;
         QJsonObject coreConfig;
-        QStringList tryDomains;
 
         QList<QSharedPointer<traffic::TrafficData>> outboundStats; // all, but not including "bypass" "block"
         QSharedPointer<traffic::TrafficData> outboundStat;         // main
         QStringList ignoreConnTag;
 
-        QList<sys::ExternalProcess *> ext;
+        std::list<std::pair<fmt::ExternalBuildResult, QSharedPointer<sys::ExternalProcess>>> exts; // extR to extC
     };
 
     class BuildConfigStatus {

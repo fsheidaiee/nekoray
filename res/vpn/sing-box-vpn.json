@@ -27,6 +27,7 @@
             "type": "socks",
             "tag": "nekoray-socks",
             "udp_fragment": true,
+            %SOCKS_USER_PASS%
             "server": "127.0.0.1",
             "server_port": %PORT%
         },
@@ -44,6 +45,7 @@
         }
     ],
     "route": {
+        "final": "%FINAL_OUT%",
         "auto_detect_interface": true,
         "rules": [
             {

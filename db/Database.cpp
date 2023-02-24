@@ -10,19 +10,21 @@ namespace NekoRay {
     ProfileManager *profileManager = new ProfileManager();
 
     ProfileManager::ProfileManager() : JsonStore("groups/pm.json") {
-        _hooks_after_load.push_back([=]() { LoadManager(); });
-        _hooks_before_save.push_back([=]() { SaveManager(); });
+        callback_after_load = [this]() { LoadManager(); };
+        callback_before_save = [this]() { SaveManager(); };
         _add(new configItem("profiles", &_profiles, itemType::integerList));
         _add(new configItem("groups", &_groups, itemType::integerList));
     }
 
     void ProfileManager::LoadManager() {
-        QList<int> invaild_profile_id;
+        profiles = {};
+        groups = {};
+        QList<int> invalidProfileId;
         for (auto id: _profiles) {
             auto ent = LoadProxyEntity(QString("profiles/%1.json").arg(id));
             if (ent == nullptr || ent->bean == nullptr || ent->bean->version == -114514) {
-                // clear invaild profile
-                invaild_profile_id << id;
+                // clear invalid profile
+                invalidProfileId << id;
                 continue;
             }
             profiles[id] = ent;
@@ -30,7 +32,7 @@ namespace NekoRay {
         for (auto id: _groups) {
             groups[id] = LoadGroup(QString("groups/%1.json").arg(id));
         }
-        for (auto id: invaild_profile_id) {
+        for (auto id: invalidProfileId) {
             DeleteProfile(id);
         }
     }
@@ -55,8 +57,7 @@ namespace NekoRay {
         }
 
         if (validType) {
-            // 加载前设置好 fn
-            ent->load_control_force = true;
+            ent->load_control_must = true;
             ent->fn = jsonPath;
             ent->Load();
         }
@@ -101,12 +102,14 @@ namespace NekoRay {
 
     // ProxyEntity
 
-    ProxyEntity::ProxyEntity(fmt::AbstractBean *bean, QString _type) {
-        type = std::move(_type);
+    ProxyEntity::ProxyEntity(fmt::AbstractBean *bean, const QString &type_) {
+        if (type_ != nullptr) this->type = type_;
+
         _add(new configItem("type", &type, itemType::string));
         _add(new configItem("id", &id, itemType::integer));
         _add(new configItem("gid", &gid, itemType::integer));
         _add(new configItem("yc", &latency, itemType::integer));
+        _add(new configItem("report", &full_test_report, itemType::string));
 
         // 可以不关联 bean，只加载 ProxyEntity 的信息
         if (bean != nullptr) {
@@ -121,7 +124,7 @@ namespace NekoRay {
         if (latency < 0) {
             return QObject::tr("Unavailable");
         } else if (latency > 0) {
-            return QString("%1 ms").arg(latency);
+            return UNICODE_LRO + QString("%1 ms").arg(latency);
         } else {
             return "";
         }
@@ -195,10 +198,7 @@ namespace NekoRay {
     }
 
     QSharedPointer<ProxyEntity> ProfileManager::GetProfile(int id) {
-        if (profiles.contains(id)) {
-            return profiles[id];
-        }
-        return nullptr;
+        return profiles.value(id, nullptr);
     }
 
     // Group
@@ -211,6 +211,8 @@ namespace NekoRay {
         _add(new configItem("url", &url, itemType::string));
         _add(new configItem("info", &info, itemType::string));
         _add(new configItem("lastup", &last_update, itemType::integer64));
+        _add(new configItem("manually_column_width", &manually_column_width, itemType::boolean));
+        _add(new configItem("column_width", &column_width, itemType::integerList));
     }
 
     QSharedPointer<Group> ProfileManager::LoadGroup(const QString &jsonPath) {
@@ -259,10 +261,7 @@ namespace NekoRay {
     }
 
     QSharedPointer<Group> ProfileManager::GetGroup(int id) {
-        if (groups.contains(id)) {
-            return groups[id];
-        }
-        return nullptr;
+        return groups.value(id, nullptr);
     }
 
     QSharedPointer<Group> ProfileManager::CurrentGroup() {

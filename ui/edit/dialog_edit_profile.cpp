@@ -75,6 +75,9 @@ DialogEditProfile::DialogEditProfile(const QString &_type, int profileOrGroupId,
         if (IS_NEKO_BOX) {
             ui->header_type->setVisible(false);
             ui->header_type_l->setVisible(false);
+            if (!ui->utlsFingerprint->count()) ui->utlsFingerprint->addItems({"", "chrome", "firefox", "edge", "safari", "360", "qq", "ios", "android", "random"});
+        } else {
+            if (!ui->utlsFingerprint->count()) ui->utlsFingerprint->addItems({"", "randomized", "randomizedalpn", "randomizednoalpn", "firefox_auto", "firefox_55", "firefox_56", "firefox_63", "firefox_65", "firefox_99", "firefox_102", "firefox_105", "chrome_auto", "chrome_58", "chrome_62", "chrome_70", "chrome_72", "chrome_83", "chrome_87", "chrome_96", "chrome_100", "chrome_102", "ios_auto", "ios_11_1", "ios_12_1", "ios_13", "ios_14", "android_11_okhttp", "edge_auto", "edge_85", "edge_106", "safari_auto", "safari_16_0", "360_auto", "360_7_5", "360_11_0", "qq_auto", "qq_11_1"});
         }
         // 传输设置 是否可见
         int networkBoxVisible = 0;
@@ -203,7 +206,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
         ui->host->setText(stream->host);
         ui->sni->setText(stream->sni);
         ui->alpn->setText(stream->alpn);
-        ui->utls->setCurrentText(stream->utls);
+        ui->utlsFingerprint->setCurrentText(stream->utlsFingerprint);
         ui->insecure->setChecked(stream->allow_insecure);
         ui->header_type->setCurrentText(stream->header_type);
         ui->ws_early_data_name->setText(stream->ws_early_data_name);
@@ -231,12 +234,11 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     delete old;
 
     // 左边 bean inner editor
-    innerEditor->get_edit_dialog = [&]() {
-        return (QWidget *) this;
-    };
-    innerEditor->editor_cache_updated = [=] {
-        editor_cache_updated_impl();
-    };
+    innerEditor->get_edit_dialog = [&]() { return (QWidget *) this; };
+    innerEditor->get_edit_text_name = [&]() { return ui->name->text(); };
+    innerEditor->get_edit_text_serverAddress = [&]() { return ui->address->text(); };
+    innerEditor->get_edit_text_serverPort = [&]() { return ui->port->text(); };
+    innerEditor->editor_cache_updated = [=] { editor_cache_updated_impl(); };
     innerEditor->onStart(ent);
 
     // 左边 common
@@ -246,12 +248,7 @@ void DialogEditProfile::typeSelected(const QString &newType) {
     ui->port->setValidator(QRegExpValidator_Number);
 
     // 星号
-    for (auto label: findChildren<QLabel *>()) {
-        auto text = label->text();
-        if (!label->toolTip().isEmpty() && !text.endsWith("*")) {
-            label->setText(text + "*");
-        }
-    }
+    ADD_ASTERISK(this);
 
     // 设置 for NekoBox
     if (IS_NEKO_BOX) {
@@ -322,7 +319,7 @@ void DialogEditProfile::accept() {
         stream->host = ui->host->text();
         stream->sni = ui->sni->text();
         stream->alpn = ui->alpn->text();
-        stream->utls = ui->utls->currentText();
+        stream->utlsFingerprint = ui->utlsFingerprint->currentText();
         stream->allow_insecure = ui->insecure->isChecked();
         stream->header_type = ui->header_type->currentText();
         stream->ws_early_data_name = ui->ws_early_data_name->text();

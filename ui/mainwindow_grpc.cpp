@@ -41,9 +41,13 @@ void MainWindow::setup_grpc() {
 inline bool speedtesting = false;
 
 void MainWindow::speedtest_current_group(int mode) {
+    auto profiles = get_selected_or_group();
+    if (profiles.isEmpty()) return;
+    auto group = NekoRay::profileManager->CurrentGroup();
+    if (group->archive) return;
+
 #ifndef NKR_NO_GRPC
     if (speedtesting) return;
-
     QStringList full_test_flags;
     if (mode == libcore::FullTest) {
         bool ok;
@@ -52,30 +56,19 @@ void MainWindow::speedtest_current_group(int mode) {
                                           "1. Latency\n"
                                           "2. Download speed\n"
                                           "3. In and Out IP\n"
-                                          "4. NAT type"),
-                                       QLineEdit::Normal, "1,2,3,4", &ok);
+                                          "4. UDP Latency"),
+                                       QLineEdit::Normal, "1,4", &ok);
         full_test_flags = s.trimmed().split(",");
         if (!ok) return;
     }
-
     speedtesting = true;
 
-    runOnNewThread([=]() {
-        auto group = NekoRay::profileManager->CurrentGroup();
-        if (group->archive) return;
-        auto order = ui->proxyListTable->order; // copy
-
+    runOnNewThread([this, profiles, mode, full_test_flags]() {
         QMutex lock_write;
         QMutex lock_return;
-        QList<QSharedPointer<NekoRay::ProxyEntity>> profiles;
-        int threadN = mode == libcore::FullTest ? 1 : NekoRay::dataStore->test_concurrent;
+        int threadN = NekoRay::dataStore->test_concurrent;
         int threadN_finished = 0;
-
-        // 这个是按照显示的顺序
-        for (auto id: order) {
-            auto profile = NekoRay::profileManager->GetProfile(id);
-            if (profile != nullptr) profiles += profile;
-        }
+        auto profiles_test = profiles; // copy
 
         // Threads
         lock_return.lock();
@@ -84,13 +77,13 @@ void MainWindow::speedtest_current_group(int mode) {
                 forever {
                     //
                     lock_write.lock();
-                    if (profiles.isEmpty()) {
+                    if (profiles_test.isEmpty()) {
                         threadN_finished++;
                         if (threadN == threadN_finished) lock_return.unlock();
                         lock_write.unlock();
                         return;
                     }
-                    auto profile = profiles.takeFirst();
+                    auto profile = profiles_test.takeFirst();
                     lock_write.unlock();
 
                     //
@@ -100,37 +93,36 @@ void MainWindow::speedtest_current_group(int mode) {
                     req.set_url(NekoRay::dataStore->test_url.toStdString());
 
                     //
-                    QList<NekoRay::sys::ExternalProcess *> ext;
+                    std::list<std::pair<NekoRay::fmt::ExternalBuildResult, QSharedPointer<NekoRay::sys::ExternalProcess>>> exts;
 
                     if (mode == libcore::TestMode::UrlTest || mode == libcore::FullTest) {
                         auto c = NekoRay::BuildConfig(profile, true, false);
-                        // external test ???
-                        if (!c->ext.isEmpty()) {
-                            ext = c->ext;
-                            for (auto extC: ext) {
-                                extC->Start();
+                        // TODO refactor external test
+                        if (!c->exts.empty()) {
+                            exts = c->exts;
+                            for (const auto &ext: exts) {
+                                ext.second->Start();
                             }
                             QThread::msleep(500);
                         }
                         //
                         auto config = new libcore::LoadConfigReq;
-                        config->set_coreconfig(QJsonObject2QString(c->coreConfig, true).toStdString());
+                        config->set_core_config(QJsonObject2QString(c->coreConfig, true).toStdString());
                         req.set_allocated_config(config);
                         req.set_in_address(profile->bean->serverAddress.toStdString());
 
                         req.set_full_latency(full_test_flags.contains("1"));
                         req.set_full_speed(full_test_flags.contains("2"));
                         req.set_full_in_out(full_test_flags.contains("3"));
-                        req.set_full_nat(full_test_flags.contains("4"));
+                        req.set_full_udp_latency(full_test_flags.contains("4"));
                     } else if (mode == libcore::TcpPing) {
                         req.set_address(profile->bean->DisplayAddress().toStdString());
                     }
 
                     bool rpcOK;
                     auto result = defaultClient->Test(&rpcOK, req);
-                    for (auto extC: ext) {
-                        extC->Kill();
-                        extC->deleteLater();
+                    for (const auto &ext: exts) {
+                        ext.second->Kill();
                     }
                     if (!rpcOK) return;
 
@@ -139,11 +131,13 @@ void MainWindow::speedtest_current_group(int mode) {
                     profile->full_test_report = result.full_report().c_str();
                     profile->Save();
 
-                    runOnUiThread([=] {
-                        if (!result.error().empty()) {
-                            show_log_impl(tr("[%1] test error: %2").arg(profile->bean->DisplayTypeAndName(), result.error().c_str()));
-                        }
-                        refresh_proxy_list(profile->id);
+                    if (!result.error().empty()) {
+                        MW_show_log(tr("[%1] test error: %2").arg(profile->bean->DisplayTypeAndName(), result.error().c_str()));
+                    }
+
+                    auto profileId = profile->id;
+                    runOnUiThread([this, profileId] {
+                        refresh_proxy_list(profileId);
                     });
                 }
             });
@@ -157,7 +151,7 @@ void MainWindow::speedtest_current_group(int mode) {
 #endif
 }
 
-void MainWindow::test_current() {
+void MainWindow::speedtest_current() {
 #ifndef NKR_NO_GRPC
     last_test_time = QTime::currentTime();
     ui->label_running->setText(tr("Testing"));
@@ -186,7 +180,7 @@ void MainWindow::test_current() {
 #endif
 }
 
-void MainWindow::ExitNekorayCore() {
+void MainWindow::stop_core_daemon() {
 #ifndef NKR_NO_GRPC
     NekoRay::rpc::defaultClient->Exit();
 #endif
@@ -220,8 +214,8 @@ void MainWindow::neko_start(int _id) {
 
 #ifndef NKR_NO_GRPC
     libcore::LoadConfigReq req;
-    req.set_coreconfig(QJsonObject2QString(result->coreConfig, true).toStdString());
-    req.set_trydomains(result->tryDomains.join(",").toStdString());
+    req.set_core_config(QJsonObject2QString(result->coreConfig, true).toStdString());
+    req.set_enable_nekoray_connections(NekoRay::dataStore->connection_statistics);
     //
     bool rpcOK;
     QString error = defaultClient->Start(&rpcOK, req);
@@ -236,8 +230,9 @@ void MainWindow::neko_start(int _id) {
     NekoRay::traffic::trafficLooper->loop_enabled = true;
 #endif
 
-    for (auto extC: result->ext) {
-        extC->Start();
+    for (const auto &ext: result->exts) {
+        NekoRay::sys::running_ext.push_back(ext.second);
+        ext.second->Start();
     }
 
     NekoRay::dataStore->UpdateStartedId(ent->id);
@@ -254,7 +249,6 @@ void MainWindow::neko_stop(bool crash) {
     while (!NekoRay::sys::running_ext.isEmpty()) {
         auto extC = NekoRay::sys::running_ext.takeFirst();
         extC->Kill();
-        extC->deleteLater();
     }
 
 #ifndef NKR_NO_GRPC
@@ -287,6 +281,7 @@ void MainWindow::neko_stop(bool crash) {
 }
 
 void MainWindow::CheckUpdate() {
+    // on new thread...
 #ifndef NKR_NO_GRPC
     bool ok;
     libcore::UpdateReq request;

@@ -2,8 +2,6 @@
 
 namespace NekoRay {
 
-    QString FindCoreAsset(const QString &name);
-
     class Routing : public JsonStore {
     public:
         QString direct_ip;
@@ -12,11 +10,12 @@ namespace NekoRay {
         QString proxy_domain;
         QString block_ip;
         QString block_domain;
+        QString def_outbound = "proxy";
         QString custom = "{\"rules\": []}";
 
         explicit Routing(int preset = 0);
 
-        [[nodiscard]] QString toString() const;
+        [[nodiscard]] QString DisplayRouting() const;
 
         static QStringList List();
 
@@ -36,6 +35,16 @@ namespace NekoRay {
         void Delete(const QString &id);
     };
 
+    class InboundAuthorization : public JsonStore {
+    public:
+        QString username;
+        QString password;
+
+        InboundAuthorization();
+
+        [[nodiscard]] bool NeedAuth() const;
+    };
+
     class DataStore : public JsonStore {
     public:
         // Running
@@ -52,6 +61,7 @@ namespace NekoRay {
         Routing *routing = new Routing;
         int imported_count = 0;
         bool refreshing_group_list = false;
+        bool refreshing_group = false;
         int resolve_count = 0;
 
         // Flags
@@ -77,6 +87,8 @@ namespace NekoRay {
         bool check_include_pre = false;
         QString system_proxy_format = "";
         QStringList log_ignore = {};
+        bool start_minimal = false;
+        int max_log_line = 200;
 
         // Subscription
         QString user_agent = "Nekoray/1.0 (Prefer Clash Format)";
@@ -98,13 +110,15 @@ namespace NekoRay {
         QString inbound_address = "127.0.0.1";
         int inbound_socks_port = 2080; // or Mixed
         int inbound_http_port = -2081;
+        InboundAuthorization *inbound_auth = new InboundAuthorization;
         QString custom_inbound = "{\"inbounds\": []}";
 
         // DNS
         QString remote_dns = "https://8.8.8.8/dns-query";
+        QString remote_dns_strategy = "";
         QString direct_dns = "localhost";
+        QString direct_dns_strategy = "";
         bool dns_routing = true;
-        bool enhance_resolve_server_domain = false;
 
         // Routing
         bool fake_dns = false;
@@ -121,8 +135,9 @@ namespace NekoRay {
         bool vpn_ipv6 = false;
         bool vpn_hide_console = false;
         bool vpn_strict_route = false;
-        QString vpn_bypass_process = "";
-        QString vpn_bypass_cidr = "";
+        bool vpn_rule_white = false;
+        QString vpn_rule_process = "";
+        QString vpn_rule_cidr = "";
 
         // Hotkey
         QString hotkey_mainwindow = "";
@@ -133,6 +148,8 @@ namespace NekoRay {
         // Other Core
         ExtraCore *extraCore = new ExtraCore;
 
+        // Methods
+
         DataStore();
 
         void UpdateStartedId(int id);
@@ -140,10 +157,4 @@ namespace NekoRay {
 
     extern DataStore *dataStore;
 
-    inline int coreType = NekoRay::CoreType::V2RAY;
-
 } // namespace NekoRay
-
-#define IS_NEKO_BOX (NekoRay::coreType == NekoRay::CoreType::SING_BOX)
-#define ROUTES_PREFIX_NAME QString(IS_NEKO_BOX ? "routes_box" : "routes")
-#define ROUTES_PREFIX QString(ROUTES_PREFIX_NAME + "/")

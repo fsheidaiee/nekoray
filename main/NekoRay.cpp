@@ -17,6 +17,7 @@ namespace NekoRay {
 
     DataStore::DataStore() : JsonStore() {
         _add(new configItem("extraCore", dynamic_cast<JsonStore *>(extraCore), itemType::jsonStore));
+        _add(new configItem("inbound_auth", dynamic_cast<JsonStore *>(inbound_auth), itemType::jsonStore));
 
         _add(new configItem("user_agent", &user_agent, itemType::string));
         _add(new configItem("test_url", &test_url, itemType::string));
@@ -26,7 +27,9 @@ namespace NekoRay {
         _add(new configItem("inbound_http_port", &inbound_http_port, itemType::integer));
         _add(new configItem("log_level", &log_level, itemType::string));
         _add(new configItem("remote_dns", &remote_dns, itemType::string));
+        _add(new configItem("remote_dns_strategy", &remote_dns_strategy, itemType::string));
         _add(new configItem("direct_dns", &direct_dns, itemType::string));
+        _add(new configItem("direct_dns_strategy", &direct_dns_strategy, itemType::string));
         _add(new configItem("domain_matcher", &domain_matcher, itemType::integer));
         _add(new configItem("domain_strategy", &domain_strategy, itemType::string));
         _add(new configItem("outbound_domain_strategy", &outbound_domain_strategy, itemType::string));
@@ -40,7 +43,6 @@ namespace NekoRay {
         _add(new configItem("custom_route", &custom_route_global, itemType::string));
         _add(new configItem("v2ray_asset_dir", &v2ray_asset_dir, itemType::string));
         _add(new configItem("sub_use_proxy", &sub_use_proxy, itemType::boolean));
-        _add(new configItem("enhance_domain", &enhance_resolve_server_domain, itemType::boolean));
         _add(new configItem("remember_id", &remember_id, itemType::integer));
         _add(new configItem("remember_enable", &remember_enable, itemType::boolean));
         _add(new configItem("language", &language, itemType::integer));
@@ -60,14 +62,17 @@ namespace NekoRay {
         _add(new configItem("vpn_ipv6", &vpn_ipv6, itemType::boolean));
         _add(new configItem("vpn_hide_console", &vpn_hide_console, itemType::boolean));
         _add(new configItem("vpn_strict_route", &vpn_strict_route, itemType::boolean));
-        _add(new configItem("vpn_bypass_process", &vpn_bypass_process, itemType::string));
-        _add(new configItem("vpn_bypass_cidr", &vpn_bypass_cidr, itemType::string));
+        _add(new configItem("vpn_bypass_process", &vpn_rule_process, itemType::string));
+        _add(new configItem("vpn_bypass_cidr", &vpn_rule_cidr, itemType::string));
+        _add(new configItem("vpn_rule_white", &vpn_rule_white, itemType::boolean));
         _add(new configItem("check_include_pre", &check_include_pre, itemType::boolean));
         _add(new configItem("sp_format", &system_proxy_format, itemType::string));
         _add(new configItem("sub_clear", &sub_clear, itemType::boolean));
         _add(new configItem("sub_insecure", &sub_insecure, itemType::boolean));
         _add(new configItem("enable_js_hook", &enable_js_hook, itemType::integer));
         _add(new configItem("log_ignore", &log_ignore, itemType::stringList));
+        _add(new configItem("start_minimal", &start_minimal, itemType::boolean));
+        _add(new configItem("max_log_line", &max_log_line, itemType::integer));
     }
 
     void DataStore::UpdateStartedId(int id) {
@@ -105,17 +110,18 @@ namespace NekoRay {
         _add(new configItem("proxy_domain", &this->proxy_domain, itemType::string));
         _add(new configItem("block_ip", &this->block_ip, itemType::string));
         _add(new configItem("block_domain", &this->block_domain, itemType::string));
+        _add(new configItem("def_outbound", &this->def_outbound, itemType::string));
         _add(new configItem("custom", &this->custom, itemType::string));
     }
 
-    QString Routing::toString() const {
+    QString Routing::DisplayRouting() const {
         return QString("[Proxy] %1\n[Proxy] %2\n[Direct] %3\n[Direct] %4\n[Block] %5\n[Block] %6")
-            .arg(SplitLines(proxy_domain).join(","))
-            .arg(SplitLines(proxy_ip).join(","))
-            .arg(SplitLines(direct_domain).join(","))
-            .arg(SplitLines(direct_ip).join(","))
-            .arg(SplitLines(block_domain).join(","))
-            .arg(SplitLines(block_ip).join(","));
+            .arg(SplitLinesSkipSharp(proxy_domain).join(","))
+            .arg(SplitLinesSkipSharp(proxy_ip).join(","))
+            .arg(SplitLinesSkipSharp(direct_domain).join(","))
+            .arg(SplitLinesSkipSharp(direct_ip).join(","))
+            .arg(SplitLinesSkipSharp(block_domain).join(","))
+            .arg(SplitLinesSkipSharp(block_ip).join(","));
     }
 
     QStringList Routing::List() {
@@ -159,6 +165,15 @@ namespace NekoRay {
         auto obj = QString2QJsonObject(core_map);
         obj.remove(id);
         core_map = QJsonObject2QString(obj, true);
+    }
+
+    InboundAuthorization::InboundAuthorization() : JsonStore() {
+        _add(new configItem("user", &this->username, itemType::string));
+        _add(new configItem("pass", &this->password, itemType::string));
+    }
+
+    bool InboundAuthorization::NeedAuth() const {
+        return !username.trimmed().isEmpty() && !password.trimmed().isEmpty();
     }
 
     // 添加关联
@@ -218,9 +233,6 @@ namespace NekoRay {
     void JsonStore::FromJson(QJsonObject object) {
         for (const auto &key: object.keys()) {
             if (_map.count(key) == 0) {
-                if (debug_verbose) {
-                    qDebug() << QString("unknown key\n%1\n%2").arg(key, QJsonObject2QString(object, false));
-                }
                 continue;
             }
 
@@ -272,16 +284,12 @@ namespace NekoRay {
                     if (value.type() != QJsonValue::Object) {
                         continue;
                     }
-                    if (load_control_no_jsonStore)
-                        continue;
                     ((JsonStore *) item->ptr)->FromJson(value.toObject());
                     break;
             }
         }
 
-        for (const auto &hook: _hooks_after_load) {
-            hook();
-        }
+        if (callback_after_load != nullptr) callback_after_load();
     }
 
     void JsonStore::FromJsonBytes(const QByteArray &data) {
@@ -289,7 +297,7 @@ namespace NekoRay {
         auto document = QJsonDocument::fromJson(data, &error);
 
         if (error.error != error.NoError) {
-            if (debug_verbose) qDebug() << "QJsonParseError" << error.errorString();
+            qDebug() << "QJsonParseError" << error.errorString();
             return;
         }
 
@@ -297,9 +305,7 @@ namespace NekoRay {
     }
 
     bool JsonStore::Save() {
-        for (const auto &hook: _hooks_before_save) {
-            hook();
-        }
+        if (callback_before_save != nullptr) callback_before_save();
 
         auto save_content = ToJsonBytes();
         auto changed = last_save_content != save_content;
@@ -318,8 +324,9 @@ namespace NekoRay {
         QFile file;
         file.setFileName(fn);
 
-        if (!file.exists() && !load_control_force)
+        if (!file.exists() && !load_control_must) {
             return false;
+        }
 
         bool ok = file.open(QIODevice::ReadOnly);
         if (!ok) {

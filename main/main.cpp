@@ -32,12 +32,13 @@ int main(int argc, char *argv[]) {
     Windows_SetCrashHandler();
 #endif
 
-    QApplication a(argc, argv);
+    // pre-init QApplication
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QApplication::setAttribute(Qt::AA_DisableWindowContextHelpButton);
 #endif
     QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication::setQuitOnLastWindowClosed(false);
+    auto preQApp = new QApplication(argc, argv);
 
     // Clean
     QDir::setCurrent(QApplication::applicationDirPath());
@@ -57,7 +58,7 @@ int main(int argc, char *argv[]) {
     if (args.contains("-tray")) NekoRay::dataStore->flag_tray = true;
     if (args.contains("-debug")) NekoRay::dataStore->flag_debug = true;
 #ifdef NKR_CPP_USE_APPDATA
-    NekoRay::dataStore->flag_use_appdata = true;
+    NekoRay::dataStore->flag_use_appdata = true; // Example: Package & MacOS
 #endif
 #ifdef NKR_CPP_DEBUG
     NekoRay::dataStore->flag_debug = true;
@@ -73,6 +74,16 @@ int main(int argc, char *argv[]) {
     if (!wd.exists("config")) wd.mkdir("config");
     QDir::setCurrent(wd.absoluteFilePath("config"));
     QDir("temp").removeRecursively();
+
+    // HiDPI workaround
+    if (ReadFileText("./groups/HiDPI").toInt() == 1) {
+        QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+        QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+    }
+
+    // init QApplication
+    delete preQApp;
+    QApplication a(argc, argv);
 
     // RunGuard
     RunGuard guard("nekoray" + wd.absolutePath());
@@ -146,6 +157,9 @@ int main(int argc, char *argv[]) {
         NekoRay::dataStore->Save();
     }
 
+    // Datastore & Flags
+    if (NekoRay::dataStore->start_minimal) NekoRay::dataStore->flag_tray = true;
+
     // load routing
     NekoRay::dataStore->routing->fn = ROUTES_PREFIX + NekoRay::dataStore->active_routing;
     isLoaded = NekoRay::dataStore->routing->Load();
@@ -161,9 +175,15 @@ int main(int argc, char *argv[]) {
         case 2:
             locale = "zh_CN";
             break;
+        case 3:
+            locale = "fa_IR"; // farsi(iran)
+            break;
         default:
             locale = QLocale().name();
     }
+    QGuiApplication::tr("QT_LAYOUT_DIRECTION");
+    QLocale::setDefault(QLocale(locale));
+    //
     QTranslator trans;
     if (trans.load(":/translations/" + locale + ".qm")) {
         QCoreApplication::installTranslator(&trans);
